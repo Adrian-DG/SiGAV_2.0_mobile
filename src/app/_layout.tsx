@@ -1,15 +1,19 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useColorScheme } from 'react-native';
+import { SQLiteProvider } from 'expo-sqlite';
 
 import { SplashScreenController } from '@/components/splash-screen-controller';
 import { AuthProvider, useSession } from '@/contexts/auth-context';
+import { migrateDbIfNeeded } from '@/lib/db/migrate';
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <SplashScreenController />
-      <RootNavigator />
-    </AuthProvider>
+    <SQLiteProvider databaseName="sigav.db" onInit={migrateDbIfNeeded}>
+      <AuthProvider>
+        <SplashScreenController />
+        <RootNavigator />
+      </AuthProvider>
+    </SQLiteProvider>
   );
 }
 

@@ -1,0 +1,26 @@
+import { apiRequest } from '@/lib/api-client';
+
+import type { AuthenticatedResponse, ConfirmAgenteResult, SesionActual } from './types';
+
+/** GET /api/agentes/confirm — validación previa al login: ¿existe la cédula y está autorizada? */
+export function confirmAgente(cedula: string) {
+  return apiRequest<ConfirmAgenteResult>('/agentes/confirm', { query: { cedula } });
+}
+
+/** GET /api/unidades/confirm — validación previa al login: ¿existe la unidad con esa ficha? */
+export function confirmUnidad(ficha: string) {
+  return apiRequest<boolean>('/unidades/confirm', { query: { ficha } });
+}
+
+/** POST /api/authentication/movil/login — agente + unidad, emite un token de audiencia móvil. */
+export function loginMovil(cedula: string, ficha: string) {
+  return apiRequest<AuthenticatedResponse>('/authentication/movil/login', {
+    method: 'POST',
+    body: { cedula, ficha },
+  });
+}
+
+/** GET /api/authentication/sesion — identidad de la sesión actual, para hidratar el estado tras el login. */
+export function getSesionActual(token: string) {
+  return apiRequest<SesionActual>('/authentication/sesion', { token });
+}

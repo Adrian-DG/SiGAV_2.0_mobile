@@ -7,7 +7,10 @@ export function confirmAgente(cedula: string) {
   return apiRequest<ConfirmAgenteResult>('/agentes/confirm', { query: { cedula } });
 }
 
-/** GET /api/unidades/confirm — validación previa al login: ¿existe la unidad con esa ficha? */
+/**
+ * GET /api/unidades/confirm — validación previa al login. true solo si la unidad existe, está activa
+ * y disponible; false no distingue entre esos casos.
+ */
 export function confirmUnidad(ficha: string) {
   return apiRequest<boolean>('/unidades/confirm', { query: { ficha } });
 }

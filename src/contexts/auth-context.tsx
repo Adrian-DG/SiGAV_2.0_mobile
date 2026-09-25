@@ -1,19 +1,17 @@
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
 import { getSesionActual, loginMovil } from '@/features/auth/api';
-import type { SesionActual } from '@/features/auth/types';
+import { clearSession, persistSession, restoreSession, type Session } from '@/features/auth/session-store';
+import { setUnauthorizedHandler } from '@/lib/api-client';
 import { secureStorage } from '@/lib/storage';
 
-const TOKEN_KEY = 'sigav_movil_token';
-
-type Session = {
-  token: string;
-  agente: SesionActual;
-};
+const SESION_EXPIRADA = 'Su sesión expiró. Inicie sesión nuevamente.';
 
 type AuthContextValue = {
   session: Session | null;
   isLoading: boolean;
+  /** Motivo por el que se cerró la sesión sin que el agente lo pidiera (se muestra en el login). */
+  notice: string | null;
   signIn: (cedula: string, ficha: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -31,42 +29,46 @@ export function useSession(): AuthContextValue {
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    async function restore() {
-      try {
-        const token = await secureStorage.getItem(TOKEN_KEY);
-        if (!token) return;
-
-        const agente = await getSesionActual(token);
-        setSession({ token, agente });
-      } catch {
-        // Token vencido, inválido, o sin conexión: se descarta y se vuelve a pedir login.
-        await secureStorage.deleteItem(TOKEN_KEY);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    restore();
+    restoreSession({ storage: secureStorage, fetchSesion: getSesionActual })
+      .then(setSession)
+      .catch(() => setSession(null))
+      .finally(() => setIsLoading(false));
   }, []);
+
+  // La API rechazó el token a mitad del turno: se cierra la sesión (el guard de rutas lleva al login)
+  useEffect(
+    () =>
+      setUnauthorizedHandler(() => {
+        clearSession(secureStorage).catch(() => {});
+        setNotice(SESION_EXPIRADA);
+        setSession(null);
+      }),
+    [],
+  );
 
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
       isLoading,
+      notice,
       async signIn(cedula: string, ficha: string) {
         const { token } = await loginMovil(cedula, ficha);
         const agente = await getSesionActual(token);
-        await secureStorage.setItem(TOKEN_KEY, token);
-        setSession({ token, agente });
+        const nueva = { token, agente };
+        await persistSession(secureStorage, nueva);
+        setNotice(null);
+        setSession(nueva);
       },
       async signOut() {
-        await secureStorage.deleteItem(TOKEN_KEY);
+        await clearSession(secureStorage);
+        setNotice(null);
         setSession(null);
       },
     }),
-    [session, isLoading],
+    [session, isLoading, notice],
   );
 
   return <AuthContext value={value}>{children}</AuthContext>;

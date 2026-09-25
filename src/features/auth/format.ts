@@ -1,11 +1,15 @@
 /**
  * Input masking and format validation for the login form.
  * - Cédula: Dominican national ID, 000-0000000-0 (3 + 7 + 1 digits).
- * - Ficha: two letters + 3-4 digits, e.g. CA-1759.
+ * - Ficha: letras, dígitos y guiones, hasta 20 caracteres (Unidad.FichaMaxLength en la API).
+ *   No se impone un patrón fijo (p. ej. CA-1759): las fichas reales no lo siguen todas y es la
+ *   API quien confirma si existe.
  */
 
 const CEDULA_REGEX = /^\d{3}-\d{7}-\d$/;
-const FICHA_REGEX = /^[A-Z]{2}-\d{3,4}$/;
+
+export const FICHA_MAX_LENGTH = 20;
+const FICHA_REGEX = /^[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?$/;
 
 export function maskCedula(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 11);
@@ -22,22 +26,16 @@ export function unmaskCedula(value: string): string {
   return value.replace(/\D/g, '');
 }
 
+/** Mayúsculas, sin espacios ni símbolos (salvo guiones simples), hasta FICHA_MAX_LENGTH. */
 export function maskFicha(raw: string): string {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  let letters = '';
-  let digits = '';
-
-  for (const char of clean) {
-    if (letters.length < 2 && /[A-Z]/.test(char)) {
-      letters += char;
-    } else if (digits.length < 4 && /[0-9]/.test(char)) {
-      digits += char;
-    }
-  }
-
-  return digits ? `${letters}-${digits}` : letters;
+  return raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-/, '')
+    .slice(0, FICHA_MAX_LENGTH);
 }
 
 export function isFichaComplete(value: string): boolean {
-  return FICHA_REGEX.test(value);
+  return value.length <= FICHA_MAX_LENGTH && FICHA_REGEX.test(value);
 }

@@ -6,7 +6,7 @@ const DATABASE_VERSION = 1;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
- * Creates the local schema and, on a fresh database, seeds sample eventos so the app has
+ * Creates the local schema and, in development builds only, seeds sample eventos so the app has
  * something to show while GET /api/eventos doesn't exist yet on the API.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
@@ -32,26 +32,32 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       );
     `);
 
-    await db.withTransactionAsync(async () => {
-      for (const evento of SEED_EVENTOS) {
-        await db.runAsync(
-          `INSERT INTO eventos
-            (estado, categoria, tipos, ciudadano_principal, vehiculo_descripcion, direccion, fecha_hora_reporte, unidad_ficha)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          evento.estado,
-          evento.categoria,
-          JSON.stringify(evento.tipos),
-          evento.ciudadanoPrincipal,
-          evento.vehiculoDescripcion,
-          evento.direccion,
-          evento.fechaHoraReporte,
-          evento.unidadFicha,
-        );
-      }
-    });
+    // Datos de muestra SOLO en desarrollo: en una compilación de release no deben aparecer
+    // eventos falsos (además quedarían marcados como sincronizados).
+    if (__DEV__) await seedSampleEventos(db);
 
     currentVersion = 1;
   }
 
   await db.execAsync(`PRAGMA user_version = ${currentVersion}`);
+}
+
+async function seedSampleEventos(db: SQLiteDatabase): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const evento of SEED_EVENTOS) {
+      await db.runAsync(
+        `INSERT INTO eventos
+          (estado, categoria, tipos, ciudadano_principal, vehiculo_descripcion, direccion, fecha_hora_reporte, unidad_ficha)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        evento.estado,
+        evento.categoria,
+        JSON.stringify(evento.tipos),
+        evento.ciudadanoPrincipal,
+        evento.vehiculoDescripcion,
+        evento.direccion,
+        evento.fechaHoraReporte,
+        evento.unidadFicha,
+      );
+    }
+  });
 }

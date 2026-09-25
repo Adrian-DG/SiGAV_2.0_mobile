@@ -16,6 +16,7 @@ import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
 import { confirmAgente, confirmUnidad } from '@/features/auth/api';
 import {
+  FICHA_MAX_LENGTH,
   isCedulaComplete,
   isFichaComplete,
   maskCedula,
@@ -27,7 +28,7 @@ import { ApiError } from '@/lib/api-client';
 type FieldStatus = 'idle' | 'checking' | 'valid' | 'invalid';
 
 export default function LoginScreen() {
-  const { signIn } = useSession();
+  const { signIn, notice } = useSession();
 
   const [cedula, setCedula] = useState('');
   const [cedulaStatus, setCedulaStatus] = useState<FieldStatus>('idle');
@@ -73,17 +74,19 @@ export default function LoginScreen() {
 
     if (!isFichaComplete(ficha)) {
       setFichaStatus('invalid');
-      setFichaError('Formato inválido. Use dos letras y 3-4 números, ej. CA-1759.');
+      setFichaError('Ficha inválida. Use solo letras, números y guiones, ej. CA-1759.');
       return;
     }
 
     setFichaStatus('checking');
     setFichaError(null);
     try {
-      const exists = await confirmUnidad(ficha);
-      if (!exists) {
+      // La API responde false tanto si la ficha no existe como si la unidad está desactivada o
+      // no disponible: el mensaje no puede asumir que la ficha esté mal escrita.
+      const disponible = await confirmUnidad(ficha);
+      if (!disponible) {
         setFichaStatus('invalid');
-        setFichaError('Ficha no encontrada.');
+        setFichaError('Unidad no encontrada o no disponible. Verifique la ficha o contacte a front desk.');
       } else {
         setFichaStatus('valid');
       }
@@ -127,6 +130,11 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.card}>
+            {notice && (
+              <Text style={styles.notice} accessibilityRole="alert">
+                {notice}
+              </Text>
+            )}
             <TextField
               label="Cédula"
               placeholder="000-0000000-0"
@@ -169,7 +177,7 @@ export default function LoginScreen() {
                   editable={fichaStatus !== 'checking'}
                   autoCapitalize="characters"
                   autoCorrect={false}
-                  maxLength={7}
+                  maxLength={FICHA_MAX_LENGTH}
                   returnKeyType="done"
                   errorText={fichaError}
                 />
@@ -224,7 +232,8 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '800',
-    color: Palette.white,
+    // Antes Palette.white sobre fondo blanco: el título no se veía
+    color: Palette.primary[700],
     marginTop: 4,
   },
   subtitle: {
@@ -245,6 +254,16 @@ const styles = StyleSheet.create({
     color: Palette.success[600],
     fontWeight: '700',
     fontSize: 13,
+  },
+  notice: {
+    // warning[900] sobre warning[50] = 7.65:1 (warning[700] daba 3.55:1, bajo el mínimo WCAG de 4.5)
+    color: Palette.warning[900],
+    backgroundColor: Palette.warning[50],
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   formError: {
     color: Palette.danger[600],

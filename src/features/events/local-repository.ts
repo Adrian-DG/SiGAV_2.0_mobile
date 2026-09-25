@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { diaOperativo, rangoDiaOperativoUtc } from '@/lib/fecha-operativa';
+
 import type { CategoriaEvento, EstadoEvento, EventoListItem, ResumenEventos } from './types';
 
 type EventoRow = {
@@ -36,12 +38,19 @@ export async function getEventosLocal(db: SQLiteDatabase, estado: EstadoEvento):
   return rows.map(toListItem);
 }
 
-/** Resumen de hoy (totales por categoría), equivalente local a GET /api/estadisticas/eventos. */
-export async function getResumenHoyLocal(db: SQLiteDatabase): Promise<ResumenEventos> {
+/**
+ * Resumen de hoy (totales por categoría), equivalente local a GET /api/estadisticas/eventos.
+ * "Hoy" es el día operativo de RD, no el día UTC (date('now') de SQLite es UTC y a partir de las
+ * 8:00 p. m. ya correspondería al día siguiente).
+ */
+export async function getResumenHoyLocal(db: SQLiteDatabase, ahora: Date = new Date()): Promise<ResumenEventos> {
+  const { desdeUtc, hastaUtc } = rangoDiaOperativoUtc(diaOperativo(ahora));
   const rows = await db.getAllAsync<{ categoria: number; total: number }>(
     `SELECT categoria, COUNT(*) as total FROM eventos
-     WHERE date(fecha_hora_reporte) = date('now')
+     WHERE fecha_hora_reporte >= ? AND fecha_hora_reporte < ?
      GROUP BY categoria`,
+    desdeUtc,
+    hastaUtc,
   );
 
   const porCategoria = rows.map((row) => ({

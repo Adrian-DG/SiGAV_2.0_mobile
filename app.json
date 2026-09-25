@@ -42,7 +42,13 @@
         }
       ],
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SiGAV Móvil usa tu ubicación para registrar dónde ocurre cada evento atendido por la unidad."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

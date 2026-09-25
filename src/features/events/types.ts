@@ -24,11 +24,87 @@ export type EventoListItem = {
   id: number;
   estado: EstadoEvento;
   tipos: string[];
+  /** Solo en la respuesta de la API (el listado local no la trae). */
+  categorias?: CategoriaEvento[];
   ciudadanoPrincipal: string | null;
   vehiculoDescripcion: string | null;
   direccion: string | null;
   fechaHoraReporte: string;
   unidadFicha: string;
+  unidadDenominacion?: string;
+};
+
+/** Mirrors Application/Common/Models/PagedResult.cs. */
+export type PagedResult<T> = {
+  items: T[];
+  page: number;
+  size: number;
+  totalCount: number;
+  totalPages: number;
+};
+
+/** Mirrors Domain/Enums/RolCiudadanoEnum.cs. */
+export const RolCiudadanoValue = {
+  Conductor: 1,
+  Pasajero: 2,
+  Peaton: 3,
+  Paciente: 4,
+  Otro: 5,
+} as const;
+export type RolCiudadano = (typeof RolCiudadanoValue)[keyof typeof RolCiudadanoValue];
+
+/** Mirrors Domain/Enums/SexoEnum.cs. */
+export const SexoValue = {
+  NoIndicado: 0,
+  Masculino: 1,
+  Femenino: 2,
+} as const;
+export type Sexo = (typeof SexoValue)[keyof typeof SexoValue];
+
+/** Mirrors VehiculoEventoRequest (Application/Features/Operaciones/Eventos/RegistrarEvento.cs). */
+export type VehiculoEventoRequest = {
+  placa: string | null;
+  tipoVehiculoId: number | null;
+  marcaId: number | null;
+  modeloId: number | null;
+  colorId: number | null;
+  marcaTexto: string | null;
+  modeloTexto: string | null;
+  colorTexto: string | null;
+};
+
+/** Mirrors CiudadanoEventoRequest. */
+export type CiudadanoEventoRequest = {
+  rol: RolCiudadano;
+  identificacion: string | null;
+  nombre: string | null;
+  apellido: string | null;
+  sexo: Sexo;
+  telefono: string | null;
+  nacionalidadId: number | null;
+  vehiculo: VehiculoEventoRequest | null;
+};
+
+/**
+ * Mirrors RegistrarEventoCommand. Desde la app, unidad, agente y canal los toma la API de la sesión,
+ * y el tramo es el de la denominación de la unidad.
+ */
+export type RegistrarEventoRequest = {
+  requestId: string;
+  latitud: number;
+  longitud: number;
+  municipioId: number;
+  tipoEventoIds: number[];
+  fechaHoraReporteUtc: string;
+  fechaHoraLlegadaUtc: string;
+  direccion: string | null;
+  comentario: string | null;
+  ciudadanos: CiudadanoEventoRequest[];
+};
+
+export type RegistrarEventoResult = {
+  id: number;
+  esDuplicado: boolean;
 };
 
 /** Mirrors Application/Features/Estadisticas/EstadisticasViewModels.cs (subset used by the home screen). */

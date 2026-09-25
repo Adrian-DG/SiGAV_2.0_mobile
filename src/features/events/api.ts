@@ -1,7 +1,15 @@
 import { apiRequest } from '@/lib/api-client';
 import { diaOperativo } from '@/lib/fecha-operativa';
 
-import type { EstadisticasEventosResponse, EstadoEvento, EventoListItem, NamedViewModel } from './types';
+import type {
+  EstadisticasEventosResponse,
+  EstadoEvento,
+  EventoListItem,
+  NamedViewModel,
+  PagedResult,
+  RegistrarEventoRequest,
+  RegistrarEventoResult,
+} from './types';
 
 /**
  * GET /api/estadisticas/eventos — el alcance lo decide la sesión: en la app móvil, solo la
@@ -22,11 +30,17 @@ export function getDenominacionActual(token: string, unidadId: number) {
 }
 
 /**
- * GET /api/eventos — listado de eventos de la unidad, filtrado por estado.
- * Este endpoint todavía NO existe en la API (solo hay Estadisticas y TipoEventos sobre el
- * agregado Evento por ahora). Se deja implementado contra la forma esperada; mientras tanto el
- * home lee de SQLite local (features/events/local-repository.ts) y esta función no se usa.
+ * GET /api/eventos — eventos en los que participa la unidad de la sesión (la API aplica el alcance),
+ * más recientes primero.
  */
-export function getEventosUnidad(token: string, estado: EstadoEvento) {
-  return apiRequest<EventoListItem[]>('/eventos', { token, query: { estado } });
+export function getEventosUnidad(token: string, estado: EstadoEvento, page = 1, size = 50) {
+  return apiRequest<PagedResult<EventoListItem>>('/eventos', { token, query: { estado, page, size } });
+}
+
+/**
+ * POST /api/eventos — idempotente por requestId: si la API ya lo tenía (reenvío) responde el mismo
+ * evento con esDuplicado = true en lugar de crear otro.
+ */
+export function registrarEvento(token: string, request: RegistrarEventoRequest) {
+  return apiRequest<RegistrarEventoResult>('/eventos', { method: 'POST', token, body: request });
 }

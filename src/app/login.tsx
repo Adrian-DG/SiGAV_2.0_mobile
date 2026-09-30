@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiEnvironmentBadge } from '@/components/api-environment-badge';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
@@ -202,9 +203,12 @@ export default function LoginScreen() {
               loading={isSigningIn}
               disabled={!canSignIn}
               style={styles.signInButton}
-            />
-          </View>
+            />                        
+
+          </View>          
         </ScrollView>
+        {/* Fuera del scroll: queda fija en la esquina superior derecha, dentro del área segura */}
+        <ApiEnvironmentBadge style={styles.apiBadge} />
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -220,6 +224,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
     gap: 24,
+  },
+  apiBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 16,
   },
   brandPanel: {
     alignItems: 'center',

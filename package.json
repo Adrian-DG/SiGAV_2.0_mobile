@@ -40,6 +40,9 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:local": "node scripts/start.js local",
+    "start:tunnel": "node scripts/start.js dev_tunnel",
+    "start:prod": "node scripts/start.js production",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",

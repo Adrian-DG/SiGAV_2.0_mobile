@@ -1,4 +1,4 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:5282/api';
+import { apiConfig } from '@/lib/api-config';
 
 /** Matches the { message, errors } shape written by Presentation/Middleware/ApiExceptionHandler.cs. */
 export class ApiError extends Error {
@@ -45,7 +45,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 export const NETWORK_ERROR_STATUS = 0;
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
-  const url = new URL(`${API_URL.replace(/\/$/, '')}${path}`);
+  const url = new URL(`${apiConfig.baseUrl}${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
@@ -71,6 +71,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       method,
       headers: {
         'Content-Type': 'application/json',
+        ...apiConfig.headers,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

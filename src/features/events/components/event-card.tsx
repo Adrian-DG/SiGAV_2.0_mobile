@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,7 +8,8 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Tag } from '@/components/ui/tag';
 import { Palette } from '@/constants/colors';
 import { CompletarEventoSheet } from '@/features/events/components/completar-evento-sheet';
-import { EstadoEventoValue, type EventoListItem } from '@/features/events/types';
+import type { EventoLocalListItem } from '@/features/events/local/eventos-local';
+import { TIPO_CIERRE_LABELS, type TipoCierre } from '@/features/events/types';
 
 function formatFecha(iso: string): string {
   const date = new Date(iso);
@@ -27,12 +28,36 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Props opcional: sin onChanged el componente sigue funcionando (p. ej. en una preview). */
-export function EventCard({ item, onChanged }: { item: EventoListItem; onChanged?: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [completarVisible, setCompletarVisible] = useState(false);
+type EventCardProps = {
+  item: EventoLocalListItem;
+  onEditar: () => void;
+  /** Guarda el tipo de cierre en el dispositivo (el evento pasa a "por enviar"). */
+  onCerrar: (tipoCierre: TipoCierre) => Promise<void>;
+  /** Envía el evento cerrado a la API. */
+  onEnviar: () => Promise<void>;
+};
 
-  const puedeOperar = item.estado !== EstadoEventoValue.Completado;
+/**
+ * Evento guardado en el dispositivo. Acciones según su estatus:
+ *  - en curso:   Editar · Cerrar
+ *  - por enviar: Editar · Enviar (y cambiar el tipo de cierre)
+ *  - enviado:    solo lectura
+ */
+export function EventCard({ item, onEditar, onCerrar, onEnviar }: EventCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [cerrarVisible, setCerrarVisible] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+
+  async function enviar() {
+    setEnviando(true);
+    try {
+      await onEnviar();
+    } catch {
+      // El motivo queda guardado en el evento y se muestra en la tarjeta tras recargar
+    } finally {
+      setEnviando(false);
+    }
+  }
 
   return (
     <Card style={styles.card}>
@@ -43,7 +68,7 @@ export function EventCard({ item, onChanged }: { item: EventoListItem; onChanged
         style={styles.header}>
         <View style={styles.headerText}>
           <View style={styles.categorias}>
-            {(item.categorias ?? []).map((categoria) => (
+            {item.categorias.map((categoria) => (
               <CategoriaBadge key={categoria} categoria={categoria} />
             ))}
           </View>
@@ -56,40 +81,47 @@ export function EventCard({ item, onChanged }: { item: EventoListItem; onChanged
           </View>
           <Text style={styles.fecha}>{formatFecha(item.fechaHoraReporte)}</Text>
         </View>
-        <StatusBadge estado={item.estado} />
+        <View style={styles.badges}>
+          <StatusBadge estado={item.estado} />
+          {item.estatus === 'por_enviar' && <Text style={styles.porEnviar}>Por enviar</Text>}
+          {item.estatus === 'enviado' && <Text style={styles.enviado}>✓ No. {item.serverId}</Text>}
+        </View>
       </Pressable>
+
+      {!!item.syncError && item.estatus !== 'enviado' && (
+        <Text style={styles.syncError} accessibilityRole="alert">
+          No se envió: {item.syncError}
+        </Text>
+      )}
 
       {expanded && (
         <View style={styles.details}>
           <DetailRow label="Ciudadano" value={item.ciudadanoPrincipal ?? 'No registrado'} />
           <DetailRow label="Vehículo" value={item.vehiculoDescripcion ?? 'N/A'} />
           <DetailRow label="Dirección" value={item.direccion ?? 'No especificada'} />
-          <DetailRow label="Unidad" value={item.unidadFicha} />
+          {item.tipoCierre != null && <DetailRow label="Cierre" value={TIPO_CIERRE_LABELS[item.tipoCierre]} />}
+          {item.estatus === 'por_enviar' && (
+            <Button label="Cambiar tipo de cierre" variant="ghost" onPress={() => setCerrarVisible(true)} />
+          )}
         </View>
       )}
 
-      {puedeOperar && (
+      {item.estatus !== 'enviado' && (
         <View style={styles.actions}>
-          <Button
-            label="Editar"
-            variant="ghost"
-            style={styles.actionButton}
-            onPress={() => Alert.alert('Próximamente', 'La edición de eventos estará disponible pronto.')}
-          />
-          <Button
-            label="Completar"
-            variant="secondary"
-            style={styles.actionButton}
-            onPress={() => setCompletarVisible(true)}
-          />
+          <Button label="Editar" variant="ghost" style={styles.actionButton} onPress={onEditar} disabled={enviando} />
+          {item.estatus === 'en_curso' ? (
+            <Button label="Cerrar" variant="secondary" style={styles.actionButton} onPress={() => setCerrarVisible(true)} />
+          ) : (
+            <Button label="Enviar" style={styles.actionButton} onPress={enviar} loading={enviando} />
+          )}
         </View>
       )}
 
       <CompletarEventoSheet
-        visible={completarVisible}
-        eventoId={item.id}
-        onClose={() => setCompletarVisible(false)}
-        onCompleted={() => onChanged?.()}
+        visible={cerrarVisible}
+        inicial={item.tipoCierre}
+        onClose={() => setCerrarVisible(false)}
+        onConfirm={onCerrar}
       />
     </Card>
   );
@@ -110,6 +142,30 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     gap: 6,
+  },
+  badges: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  porEnviar: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Palette.warning[900],
+  },
+  enviado: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Palette.success[700],
+  },
+  syncError: {
+    marginHorizontal: 14,
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: Palette.danger[50],
+    color: Palette.danger[700],
+    fontSize: 12,
+    fontWeight: '600',
   },
   categorias: {
     flexDirection: 'row',

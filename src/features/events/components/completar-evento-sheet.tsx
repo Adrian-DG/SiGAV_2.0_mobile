@@ -4,46 +4,44 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { Palette } from '@/constants/colors';
-import { completarEvento } from '@/features/events/api';
 import { TIPO_CIERRE_LABELS, TipoCierreValue, type TipoCierre } from '@/features/events/types';
-import { useSession } from '@/contexts/auth-context';
-import { ApiError } from '@/lib/api-client';
 
 const OPCIONES = Object.values(TipoCierreValue) as TipoCierre[];
 
 type CompletarEventoSheetProps = {
   visible: boolean;
-  eventoId: number;
+  /** Tipo de cierre ya elegido (para cambiarlo antes de enviar). */
+  inicial?: TipoCierre | null;
   onClose: () => void;
-  /** Se llama tras completar el evento en la API, para que el listado se recargue. */
-  onCompleted: () => void;
+  /** Guarda el cierre en el dispositivo. Si lanza un error, se muestra y la hoja sigue abierta. */
+  onConfirm: (tipoCierre: TipoCierre) => Promise<void>;
 };
 
-/** Modal para elegir el tipo de cierre y enviar PATCH /api/eventos/{id}/completar. */
-export function CompletarEventoSheet({ visible, eventoId, onClose, onCompleted }: CompletarEventoSheetProps) {
-  const { session } = useSession();
-  const [tipoCierre, setTipoCierre] = useState<TipoCierre | null>(null);
+/**
+ * Hoja para elegir el tipo de cierre. El cierre se guarda en el dispositivo: el evento queda
+ * "por enviar" y el agente lo envía después.
+ */
+export function CompletarEventoSheet({ visible, inicial = null, onClose, onConfirm }: CompletarEventoSheetProps) {
+  const [tipoCierre, setTipoCierre] = useState<TipoCierre | null>(inicial);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const close = () => {
     if (isSubmitting) return;
-    setTipoCierre(null);
+    setTipoCierre(inicial);
     setError(null);
     onClose();
   };
 
   async function confirmar() {
-    if (!tipoCierre || !session?.token) return;
+    if (!tipoCierre) return;
     setIsSubmitting(true);
     setError(null);
     try {
-      await completarEvento(session.token, eventoId, { tipoCierre });
-      setTipoCierre(null);
-      onCompleted();
+      await onConfirm(tipoCierre);
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo completar el evento.');
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el cierre.');
     } finally {
       setIsSubmitting(false);
     }
@@ -54,12 +52,12 @@ export function CompletarEventoSheet({ visible, eventoId, onClose, onCompleted }
       <View style={styles.overlay}>
         <SafeAreaView style={styles.sheet} edges={['bottom']}>
           <View style={styles.header}>
-            <Text style={styles.title}>Completar evento</Text>
+            <Text style={styles.title}>Cerrar evento</Text>
             <Pressable accessibilityRole="button" onPress={close} hitSlop={12} disabled={isSubmitting}>
               <Text style={styles.close}>Cerrar</Text>
             </Pressable>
           </View>
-          <Text style={styles.subtitle}>Seleccione el tipo de cierre:</Text>
+          <Text style={styles.subtitle}>Seleccione el tipo de cierre. Se guarda en el dispositivo y luego podrá enviar el evento.</Text>
 
           <View style={styles.options}>
             {OPCIONES.map((opcion) => (
@@ -79,7 +77,7 @@ export function CompletarEventoSheet({ visible, eventoId, onClose, onCompleted }
 
           {!!error && <Text style={styles.error}>{error}</Text>}
 
-          <Button label="Completar" onPress={confirmar} loading={isSubmitting} disabled={!tipoCierre} />
+          <Button label="Guardar cierre" onPress={confirmar} loading={isSubmitting} disabled={!tipoCierre} />
         </SafeAreaView>
       </View>
     </Modal>

@@ -121,6 +121,9 @@ export type RegistrarEventoRequest = {
   direccion: string | null;
   comentario: string | null;
   ciudadanos: CiudadanoEventoRequest[];
+  /** El evento se envía ya cerrado en el dispositivo: la API aplica llegada y cierre al registrarlo. */
+  fechaHoraCompletadoUtc?: string;
+  tipoCierre?: TipoCierre;
 };
 
 export type RegistrarEventoResult = {

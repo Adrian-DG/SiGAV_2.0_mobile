@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -87,6 +87,25 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
 
       CREATE INDEX idx_evento_ciudadanos_evento_id ON evento_ciudadanos(evento_id);
       CREATE INDEX idx_eventos_synced ON eventos(synced);
+    `);
+  }
+
+  if (currentVersion < 3) {
+    // v3: el dispositivo es la fuente del listado y de la edición hasta que el agente envía.
+    //  - agente_id / unidad_id: de quién es el evento (el teléfono puede compartirse entre turnos)
+    //    y con qué sesión debe enviarse (la API toma unidad y agente del token).
+    //  - provincia_id: el formulario la necesita para volver a editar el municipio.
+    //  - updated_at: última edición local.
+    //  - evento_tipos.nombre/categoria: foto del catálogo para mostrar el listado sin conexión.
+    await db.execAsync(`
+      ALTER TABLE eventos ADD COLUMN agente_id INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE eventos ADD COLUMN unidad_id INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE eventos ADD COLUMN provincia_id INTEGER;
+      ALTER TABLE eventos ADD COLUMN updated_at TEXT;
+      ALTER TABLE evento_tipos ADD COLUMN nombre TEXT;
+      ALTER TABLE evento_tipos ADD COLUMN categoria INTEGER;
+
+      CREATE INDEX idx_eventos_sesion ON eventos(agente_id, unidad_id, synced, estado);
     `);
   }
 

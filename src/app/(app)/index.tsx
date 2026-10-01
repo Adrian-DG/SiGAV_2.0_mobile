@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
@@ -11,30 +12,44 @@ import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
-import { getDenominacionActual, getEstadisticasEventosHoy, getEventosUnidad } from '@/features/events/api';
+import { getDenominacionActual, getEstadisticasEventosHoy } from '@/features/events/api';
 import { EventCard } from '@/features/events/components/event-card';
 import { UnitSummaryCard } from '@/features/events/components/unit-summary-card';
-import { EstadoEventoValue, type EstadoEvento, type EventoListItem, type ResumenEventos } from '@/features/events/types';
+import { describirError, enviarEventoLocal } from '@/features/events/local/enviar-evento';
+import {
+  cerrarEventoLocal,
+  contarEventosLocales,
+  ESTATUS_LOCAL_LABELS,
+  listarEventosLocales,
+  type EstatusLocal,
+  type EventoLocalListItem,
+} from '@/features/events/local/eventos-local';
+import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
+import type { ResumenEventos } from '@/features/events/types';
 import { useNetworkStatus } from '@/hooks/use-network-status';
-import { ApiError } from '@/lib/api-client';
 
-const ESTADO_OPTIONS = [
-  { label: 'Pendiente', value: EstadoEventoValue.Pendiente },
-  { label: 'En curso', value: EstadoEventoValue.EnCurso },
-  { label: 'Completado', value: EstadoEventoValue.Completado },
-];
+const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
+
+const SIN_EVENTOS: Record<EstatusLocal, string> = {
+  en_curso: 'No hay eventos en curso. Registre uno con el botón +.',
+  por_enviar: 'No hay eventos cerrados pendientes de enviar.',
+  enviado: 'Aún no ha enviado eventos desde este dispositivo.',
+};
 
 type EventsState =
   | { status: 'loading' }
-  | { status: 'ready'; items: EventoListItem[] }
+  | { status: 'ready'; items: EventoLocalListItem[] }
   | { status: 'error'; message: string };
 
 export default function HomeScreen() {
   const router = useRouter();
   const { session, signOut } = useSession();
   const isConnected = useNetworkStatus();
+  const db = useSQLiteContext();
+  const sesion = useSesionEvento();
 
-  const [estado, setEstado] = useState<EstadoEvento>(EstadoEventoValue.Pendiente);
+  const [estatus, setEstatus] = useState<EstatusLocal>('en_curso');
+  const [conteo, setConteo] = useState<Record<EstatusLocal, number> | null>(null);
   const [resumen, setResumen] = useState<ResumenEventos | null>(null);
   const [isLoadingResumen, setIsLoadingResumen] = useState(true);
   const [denominacion, setDenominacion] = useState<string | null>(null);
@@ -48,8 +63,10 @@ export default function HomeScreen() {
   const agenteNombre = session?.agente.nombre;
   const agenteFicha = session?.agente.ficha;
 
-  // Resumen y eventos vienen de la API (el alcance lo aplica la sesión: solo la unidad del agente).
-  // Sin conexión se muestra el error con "Reintentar"; la cola offline es el siguiente paso.
+  const agenteId = sesion?.agenteId;
+
+  // Resumen y denominación vienen de la API (sin conexión simplemente no se muestran).
+  // Los eventos, del dispositivo: se registran, editan y cierran aquí hasta que el agente los envía.
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -71,22 +88,26 @@ export default function HomeScreen() {
   }, [token, refreshNonce]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!agenteId || !unidadId) return;
+    const duenio = { agenteId, unidadId };
     let cancelled = false;
     async function run() {
       setEventsState({ status: 'loading' });
       try {
-        const response = await getEventosUnidad(token!, estado);
-        if (!cancelled) setEventsState({ status: 'ready', items: response.items });
-      } catch (error) {
-        if (!cancelled) setEventsState({ status: 'error', message: error instanceof ApiError ? error.message : 'No se pudieron cargar los eventos.' });
+        const [items, totales] = await Promise.all([listarEventosLocales(db, duenio, estatus), contarEventosLocales(db, duenio)]);
+        if (!cancelled) {
+          setEventsState({ status: 'ready', items });
+          setConteo(totales);
+        }
+      } catch {
+        if (!cancelled) setEventsState({ status: 'error', message: 'No se pudieron leer los eventos del dispositivo.' });
       }
     }
     run();
     return () => {
       cancelled = true;
     };
-  }, [token, estado, refreshNonce]);
+  }, [db, agenteId, unidadId, estatus, refreshNonce]);
 
   useEffect(() => {
     if (!token || !unidadId) return;
@@ -108,7 +129,28 @@ export default function HomeScreen() {
 
   const refetchAll = () => setRefreshNonce((n) => n + 1);
 
-  // Al volver del formulario (u otra pantalla) se recarga: el evento recién registrado debe aparecer
+  async function cerrar(item: EventoLocalListItem, tipoCierre: Parameters<typeof cerrarEventoLocal>[2]) {
+    await cerrarEventoLocal(db, item.localId, tipoCierre);
+    refetchAll();
+  }
+
+  async function enviar(item: EventoLocalListItem) {
+    if (!token || !sesion) return;
+    try {
+      const resultado = await enviarEventoLocal(db, token, sesion, item.localId);
+      Alert.alert(
+        'Evento enviado',
+        resultado.esDuplicado ? `El evento No. ${resultado.id} ya estaba registrado.` : `Quedó registrado como evento No. ${resultado.id}.`,
+      );
+    } catch (error) {
+      Alert.alert('No se pudo enviar', describirError(error));
+      throw error;
+    } finally {
+      refetchAll();
+    }
+  }
+
+  // Al volver del formulario (u otra pantalla) se recarga: el evento recién guardado debe aparecer
   const primerEnfoque = useRef(true);
   useFocusEffect(
     useCallback(() => {
@@ -121,6 +163,10 @@ export default function HomeScreen() {
     }, []),
   );
   const isRefreshing = isLoadingResumen || eventsState.status === 'loading';
+  // Sin agente o unidad no hay de quién listar eventos (no debería pasar en una sesión móvil)
+  const listado: EventsState = sesion
+    ? eventsState
+    : { status: 'error', message: 'La sesión no tiene agente o unidad: vuelva a iniciar sesión.' };
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
@@ -139,8 +185,8 @@ export default function HomeScreen() {
       />
 
       <FlatList
-        data={eventsState.status === 'ready' ? eventsState.items : []}
-        keyExtractor={(item) => String(item.id)}
+        data={listado.status === 'ready' ? listado.items : []}
+        keyExtractor={(item) => String(item.localId)}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refetchAll} />}
         ListHeaderComponent={
@@ -152,21 +198,35 @@ export default function HomeScreen() {
               resumen={resumen}
               isLoadingResumen={isLoadingResumen}
             />
-            <SegmentedControl options={ESTADO_OPTIONS} value={estado} onChange={setEstado} />
+            <SegmentedControl
+              options={ESTATUS.map((e) => ({
+                label: conteo?.[e] ? `${ESTATUS_LOCAL_LABELS[e]} (${conteo[e]})` : ESTATUS_LOCAL_LABELS[e],
+                value: e,
+              }))}
+              value={estatus}
+              onChange={setEstatus}
+            />
           </View>
         }
-        renderItem={({ item }) => <EventCard item={item} onChanged={refetchAll} />}
+        renderItem={({ item }) => (
+          <EventCard
+            item={item}
+            onEditar={() => router.push({ pathname: '/events/[id]', params: { id: String(item.localId) } })}
+            onCerrar={(tipoCierre) => cerrar(item, tipoCierre)}
+            onEnviar={() => enviar(item)}
+          />
+        )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          eventsState.status === 'loading' ? (
+          listado.status === 'loading' ? (
             <ActivityIndicator style={styles.loader} color={Palette.primary[500]} />
-          ) : eventsState.status === 'error' ? (
+          ) : listado.status === 'error' ? (
             <View style={styles.errorState}>
-              <EmptyState glyph="⚠" title="No se pudo cargar" description={eventsState.message} />
+              <EmptyState glyph="⚠" title="No se pudo cargar" description={listado.message} />
               <Button label="Reintentar" variant="ghost" onPress={refetchAll} />
             </View>
           ) : (
-            <EmptyState glyph="▢" title="No hay eventos" description="No se encontraron eventos para el filtro seleccionado." />
+            <EmptyState glyph="▢" title="No hay eventos" description={SIN_EVENTOS[estatus]} />
           )
         }
       />

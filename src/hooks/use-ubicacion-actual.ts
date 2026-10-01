@@ -17,14 +17,16 @@ const toUbicacion = (location: Location.LocationObject): Ubicacion => ({
 /**
  * Coordenadas del evento, tomadas en segundo plano al abrir el formulario (no dependen del agente).
  * Primero usa la última posición conocida si es reciente (instantánea) y luego la afina con una
- * lectura actual.
+ * lectura actual. Con `enabled = false` no pide permiso ni lee el GPS.
  */
-export function useUbicacionActual() {
+export function useUbicacionActual(enabled = true) {
   const [ubicacion, setUbicacion] = useState<Ubicacion | null>(null);
   const [estado, setEstado] = useState<EstadoUbicacion>('buscando');
   const [intento, setIntento] = useState(0);
 
   useEffect(() => {
+    // Al editar un evento guardado no se vuelve a tomar: la ubicación es la del momento del registro
+    if (!enabled) return;
     let cancelado = false;
 
     async function obtener() {
@@ -57,7 +59,7 @@ export function useUbicacionActual() {
     return () => {
       cancelado = true;
     };
-  }, [intento]);
+  }, [intento, enabled]);
 
   const reintentar = useCallback(() => {
     setEstado('buscando');

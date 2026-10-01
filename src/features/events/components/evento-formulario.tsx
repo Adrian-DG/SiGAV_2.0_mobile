@@ -15,33 +15,47 @@ import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
 import type { TipoEventoItem } from '@/features/catalogos/api';
 import { useCatalogos } from '@/features/catalogos/catalogos-context';
-import { listarMunicipios, listarProvincias, listarTiposEvento } from '@/features/catalogos/local/catalogos-local';
-import { InvolucradoEditor } from '@/features/events/components/involucrado-editor';
 import {
+  listarMunicipios,
+  listarPrefijosPlaca,
+  listarProvincias,
+  listarTiposEvento,
+} from '@/features/catalogos/local/catalogos-local';
+import { InvolucradoEditor } from '@/features/events/components/involucrado-editor';
+import { VehiculoEditor } from '@/features/events/components/vehiculo-editor';
+import { nombrePersona, ROL_LABEL, VehiculoTarjeta } from '@/features/events/components/vehiculo-tarjeta';
+import {
+  guardarInvolucrado as conInvolucrado,
+  guardarVehiculo as conVehiculo,
+  MAX_PERSONAS,
+  MAX_VEHICULOS,
   nuevoInvolucrado,
+  nuevoVehiculo,
+  ocupantesDe,
+  personasSinVehiculo,
+  quitarInvolucrado,
+  quitarVehiculo,
+  tieneConductor,
   toggleTipoEvento,
   validarEvento,
   type EventoForm,
   type FormErrors,
   type InvolucradoForm,
+  type VehiculoForm,
 } from '@/features/events/form/evento-form';
 import type { TipoEventoInfo } from '@/features/events/local/eventos-local';
-import { CategoriaEventoValue, RolCiudadanoValue } from '@/features/events/types';
+import { CategoriaEventoValue, RolCiudadanoValue, type RolCiudadano } from '@/features/events/types';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { useUbicacionActual } from '@/hooks/use-ubicacion-actual';
 import { secureStorage } from '@/lib/storage';
 
 const ULTIMO_MUNICIPIO_KEY = 'sigav_movil_ultimo_municipio';
 
-const ROL_LABEL: Record<number, string> = {
-  [RolCiudadanoValue.Conductor]: 'Conductor',
-  [RolCiudadanoValue.Pasajero]: 'Pasajero',
-  [RolCiudadanoValue.Peaton]: 'Peatón',
-  [RolCiudadanoValue.Paciente]: 'Paciente',
-  [RolCiudadanoValue.Otro]: 'Otro',
-};
-
-type Editor = { index: number | null; draft: InvolucradoForm } | null;
+/** Lo que se está agregando o editando: ocupa el lugar de las secciones de vehículos y personas. */
+type Editor =
+  | { tipo: 'vehiculo'; nuevo: boolean; draft: VehiculoForm }
+  | { tipo: 'persona'; nuevo: boolean; draft: InvolucradoForm }
+  | null;
 
 type EventoFormularioProps = {
   titulo: string;
@@ -73,6 +87,7 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
   const provincias = useCatalogo('provincias', listarProvincias);
   const provinciaId = form.provinciaId;
   const municipios = useCatalogo(provinciaId ? `municipios:${provinciaId}` : null, (db) => listarMunicipios(db, provinciaId!));
+  const prefijos = useCatalogo('prefijos-placa', listarPrefijosPlaca);
 
   // Un evento nuevo: la unidad suele operar en la misma zona, se preselecciona el último municipio
   useEffect(() => {
@@ -91,7 +106,7 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
   const formCompleto: EventoForm = { ...form, ubicacion };
 
   async function guardar() {
-    const errores = validarEvento(formCompleto);
+    const errores = validarEvento(formCompleto, prefijos.items);
     setErrors(errores);
     setErrorGuardar(null);
     if (Object.keys(errores).length > 0) return;
@@ -113,16 +128,29 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
     }
   }
 
-  function guardarInvolucrado() {
+  function guardarEditor() {
     if (!editor) return;
-    setForm((f) => {
-      const involucrados = [...f.involucrados];
-      if (editor.index === null) involucrados.push(editor.draft);
-      else involucrados[editor.index] = editor.draft;
-      return { ...f, involucrados };
-    });
+    if (editor.tipo === 'vehiculo') {
+      const vehiculo = editor.draft;
+      setForm((f) => conVehiculo(f, vehiculo));
+    } else {
+      const persona = editor.draft;
+      setForm((f) => conInvolucrado(f, persona));
+    }
     setEditor(null);
   }
+
+  const agregarPersona = (rol: RolCiudadano, vehiculoKey: string | null = null) =>
+    setEditor({ tipo: 'persona', nuevo: true, draft: nuevoInvolucrado(Crypto.randomUUID(), rol, vehiculoKey) });
+
+  const etiquetaVehiculo = (vehiculoKey: string) => {
+    const indice = form.vehiculos.findIndex((v) => v.key === vehiculoKey);
+    const v = form.vehiculos[indice];
+    // El vehículo que se está editando aún no está guardado en el formulario
+    return v ? `Vehículo ${indice + 1} · ${v.placa || 'sin placa'}` : 'Vehículo';
+  };
+
+  const sueltos = personasSinVehiculo(form);
 
   const tiposPorCategoria = (categoria: number) => tipos.items.filter((t: TipoEventoItem) => t.categoria === categoria);
 
@@ -228,50 +256,94 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
             {!!errors.tipos && <Text style={styles.error}>{errors.tipos}</Text>}
           </Card>
 
-          {/* 4. Personas y vehículos */}
-          <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>Personas y vehículos</Text>
-            {form.involucrados.length === 0 && !editor && (
-              <Text style={styles.muted}>Agregue a cada persona involucrada y, si aplica, su vehículo.</Text>
-            )}
-            {form.involucrados.map((inv, index) =>
-              editor?.index === index ? null : (
-                <View key={inv.key} style={styles.involucrado}>
-                  <Pressable
-                    style={styles.flex}
-                    accessibilityRole="button"
-                    accessibilityLabel="Editar persona"
-                    onPress={() => setEditor({ index, draft: inv })}>
-                    <Text style={styles.involucradoTitulo}>
-                      {ROL_LABEL[inv.rol]}: {`${inv.nombre} ${inv.apellido}`.trim() || inv.identificacion || 'Persona no identificada'}
-                    </Text>
-                    {inv.conVehiculo && <Text style={styles.muted}>Vehículo {inv.vehiculo.placa || 'sin placa'}</Text>}
-                    {!!errors[`involucrado.${index}`] && <Text style={styles.error}>{errors[`involucrado.${index}`]}</Text>}
-                  </Pressable>
-                  <IconButton
-                    glyph="🗑"
-                    label="Quitar persona"
-                    onPress={() => setForm((f) => ({ ...f, involucrados: f.involucrados.filter((_, i) => i !== index) }))}
+          {/* 4. Vehículos con sus ocupantes, y personas sin vehículo */}
+          {editor?.tipo === 'vehiculo' && (
+            <VehiculoEditor
+              token={token}
+              titulo={editor.nuevo ? 'Nuevo vehículo' : etiquetaVehiculo(editor.draft.key)}
+              value={editor.draft}
+              contexto={form}
+              onChange={(draft) => setEditor((e) => (e?.tipo === 'vehiculo' ? { ...e, draft } : e))}
+              onSave={guardarEditor}
+              onCancel={() => setEditor(null)}
+            />
+          )}
+          {editor?.tipo === 'persona' && (
+            <InvolucradoEditor
+              token={token}
+              value={editor.draft}
+              contexto={form}
+              etiquetaVehiculo={etiquetaVehiculo}
+              onChange={(draft) => setEditor((e) => (e?.tipo === 'persona' ? { ...e, draft } : e))}
+              onSave={guardarEditor}
+              onCancel={() => setEditor(null)}
+            />
+          )}
+
+          {!editor && (
+            <>
+              <Card style={styles.card}>
+                <Text style={styles.sectionTitle}>Vehículos</Text>
+                {form.vehiculos.length === 0 && (
+                  <Text style={styles.muted}>Agregue cada vehículo involucrado y luego su conductor y pasajeros.</Text>
+                )}
+                {form.vehiculos.map((v, i) => (
+                  <VehiculoTarjeta
+                    key={v.key}
+                    indice={i + 1}
+                    vehiculo={v}
+                    ocupantes={ocupantesDe(form, v.key)}
+                    error={errors[`vehiculo.${v.key}`]}
+                    erroresPersona={(key) => errors[`involucrado.${key}`]}
+                    puedeAgregarConductor={!tieneConductor(form, v.key)}
+                    onEditar={() => setEditor({ tipo: 'vehiculo', nuevo: false, draft: v })}
+                    onQuitar={() => setForm((f) => quitarVehiculo(f, v.key))}
+                    onAgregarPersona={(rol) => agregarPersona(rol, v.key)}
+                    onEditarPersona={(inv) => setEditor({ tipo: 'persona', nuevo: false, draft: inv })}
+                    onQuitarPersona={(key) => setForm((f) => quitarInvolucrado(f, key))}
                   />
-                </View>
-              ),
-            )}
-            {editor ? (
-              <InvolucradoEditor
-                token={token}
-                value={editor.draft}
-                onChange={(draft) => setEditor((e) => (e ? { ...e, draft } : e))}
-                onSave={guardarInvolucrado}
-                onCancel={() => setEditor(null)}
-              />
-            ) : (
-              <Button
-                label="+ Agregar persona"
-                variant="secondary"
-                onPress={() => setEditor({ index: null, draft: nuevoInvolucrado(Crypto.randomUUID()) })}
-              />
-            )}
-          </Card>
+                ))}
+                {!!errors.vehiculos && <Text style={styles.error}>{errors.vehiculos}</Text>}
+                {form.vehiculos.length < MAX_VEHICULOS && (
+                  <Button
+                    label="+ Agregar vehículo"
+                    variant="secondary"
+                    onPress={() => setEditor({ tipo: 'vehiculo', nuevo: true, draft: nuevoVehiculo(Crypto.randomUUID()) })}
+                  />
+                )}
+              </Card>
+
+              <Card style={styles.card}>
+                <Text style={styles.sectionTitle}>Peatones y otras personas</Text>
+                {sueltos.length === 0 && (
+                  <Text style={styles.muted}>Personas que no iban en un vehículo (peatones, pacientes, testigos…).</Text>
+                )}
+                {sueltos.map((inv) => (
+                  <View key={inv.key} style={styles.involucrado}>
+                    <Pressable
+                      style={styles.flex}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Editar ${nombrePersona(inv)}`}
+                      onPress={() => setEditor({ tipo: 'persona', nuevo: false, draft: inv })}>
+                      <Text style={styles.involucradoTitulo}>
+                        {ROL_LABEL[inv.rol]}: {nombrePersona(inv)}
+                      </Text>
+                      {!!errors[`involucrado.${inv.key}`] && <Text style={styles.error}>{errors[`involucrado.${inv.key}`]}</Text>}
+                    </Pressable>
+                    <IconButton
+                      glyph="🗑"
+                      label={`Quitar a ${nombrePersona(inv)}`}
+                      tint={Palette.neutral[600]}
+                      onPress={() => setForm((f) => quitarInvolucrado(f, inv.key))} />
+                  </View>
+                ))}
+                {!!errors.personas && <Text style={styles.error}>{errors.personas}</Text>}
+                {form.involucrados.length < MAX_PERSONAS && (
+                  <Button label="+ Agregar persona" variant="secondary" onPress={() => agregarPersona(RolCiudadanoValue.Peaton)} />
+                )}
+              </Card>
+            </>
+          )}
 
           <Card style={styles.card}>
             <TextField
@@ -285,7 +357,9 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
 
           {!!errorGuardar && <Text style={[styles.error, styles.centrado]}>{errorGuardar}</Text>}
           <Button label={textoGuardar} onPress={guardar} loading={guardando} disabled={!!editor} />
-          {!!editor && <Text style={styles.muted}>Guarde o cancele la persona en edición para continuar.</Text>}
+          {!!editor && (
+            <Text style={styles.muted}>Guarde o cancele {editor.tipo === 'vehiculo' ? 'el vehículo' : 'la persona'} en edición para continuar.</Text>
+          )}
           <Text style={[styles.muted, styles.centrado]}>
             Se guarda en este dispositivo. Se envía cuando cierre el evento y lo envíe desde el inicio.
           </Text>

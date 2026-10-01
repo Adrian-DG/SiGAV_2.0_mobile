@@ -19,6 +19,17 @@ export type MunicipioItem = CatalogoItem & { provinciaId: number };
 /** Mirrors ModeloItemViewModel. */
 export type ModeloItem = CatalogoItem & { marcaId: number; tipoVehiculoId: number };
 
+/** Mirrors PrefijosPlaca.cs PrefijoPlacaItemViewModel. tipoVehiculoIds vacío = cualquier tipo. */
+export type PrefijoPlacaItem = {
+  id: number;
+  prefijo: string;
+  nombre: string;
+  /** Expresión regular de la placa normalizada (compatible con .NET y JavaScript). */
+  patron: string;
+  ejemplo: string;
+  tipoVehiculoIds: number[];
+};
+
 /** Mirrors CatalogosMovilViewModel: todos los catálogos activos que se guardan en el dispositivo. */
 export type CatalogosMovil = {
   provincias: CatalogoItem[];
@@ -30,6 +41,7 @@ export type CatalogosMovil = {
   tiposVehiculo: CatalogoItem[];
   marcas: CatalogoItem[];
   modelos: ModeloItem[];
+  prefijosPlaca: PrefijoPlacaItem[];
 };
 
 /** Mirrors CatalogosMovilResult: `catalogos` es null si el dispositivo ya tiene esa versión. */

@@ -11,7 +11,7 @@
 import type { LocalDb } from '@/features/events/local/eventos-local';
 import type { CategoriaEvento } from '@/features/events/types';
 
-import type { CatalogoItem, CatalogosMovil, ModeloItem, MunicipioItem, TipoEventoItem } from '../api';
+import type { CatalogoItem, CatalogosMovil, ModeloItem, MunicipioItem, PrefijoPlacaItem, TipoEventoItem } from '../api';
 
 export type EstadoCatalogosLocal = {
   version: string;
@@ -33,8 +33,9 @@ const simple = (nombre: string): Tabla<CatalogoItem> => ({
   valores: (x) => [x.id, x.nombre],
 });
 
-// Un catálogo de la API por tabla del dispositivo
-const TABLAS: { [K in keyof CatalogosMovil]: Tabla<CatalogosMovil[K][number]> } = {
+// Un catálogo de la API por tabla del dispositivo (los prefijos de placa usan dos: ver abajo)
+type CatalogosSimples = Omit<CatalogosMovil, 'prefijosPlaca'>;
+const TABLAS: { [K in keyof CatalogosSimples]: Tabla<CatalogosSimples[K][number]> } = {
   provincias: simple('cat_provincias'),
   municipios: {
     nombre: 'cat_municipios',
@@ -58,6 +59,17 @@ const TABLAS: { [K in keyof CatalogosMovil]: Tabla<CatalogosMovil[K][number]> } 
   },
 };
 
+const TABLA_PREFIJOS: Tabla<PrefijoPlacaItem> = {
+  nombre: 'cat_prefijos_placa',
+  columnas: ['id', 'prefijo', 'nombre', 'patron', 'ejemplo'],
+  valores: (x) => [x.id, x.prefijo, x.nombre, x.patron, x.ejemplo],
+};
+const TABLA_PREFIJO_TIPOS: Tabla<{ prefijoId: number; tipoVehiculoId: number }> = {
+  nombre: 'cat_prefijo_placa_tipos',
+  columnas: ['prefijo_placa_id', 'tipo_vehiculo_id'],
+  valores: (x) => [x.prefijoId, x.tipoVehiculoId],
+};
+
 /** SQLite limita los parámetros por sentencia (999 en compilaciones antiguas). */
 const MAX_PARAMETROS = 900;
 
@@ -69,11 +81,21 @@ const CLAVE_SINCRONIZADO = 'sincronizado_en';
 /** Reemplaza todos los catálogos en una sola transacción: queda la versión nueva completa o la anterior. */
 export async function guardarCatalogos(db: LocalDb, version: string, catalogos: CatalogosMovil, ahora: Date = new Date()) {
   await db.withTransactionAsync(async () => {
-    for (const clave of Object.keys(TABLAS) as (keyof CatalogosMovil)[]) {
+    for (const clave of Object.keys(TABLAS) as (keyof CatalogosSimples)[]) {
       const tabla = TABLAS[clave] as Tabla<unknown>;
       await db.runAsync(`DELETE FROM ${tabla.nombre}`);
       await insertarEnLotes(db, tabla, catalogos[clave] ?? []);
     }
+
+    const prefijos = catalogos.prefijosPlaca ?? [];
+    await db.runAsync(`DELETE FROM ${TABLA_PREFIJO_TIPOS.nombre}`);
+    await db.runAsync(`DELETE FROM ${TABLA_PREFIJOS.nombre}`);
+    await insertarEnLotes(db, TABLA_PREFIJOS, prefijos);
+    await insertarEnLotes(
+      db,
+      TABLA_PREFIJO_TIPOS,
+      prefijos.flatMap((p) => p.tipoVehiculoIds.map((tipoVehiculoId) => ({ prefijoId: p.id, tipoVehiculoId }))),
+    );
     await guardarMeta(db, CLAVE_VERSION, version);
     await guardarMeta(db, CLAVE_SINCRONIZADO, ahora.toISOString());
   });
@@ -135,6 +157,40 @@ export const listarNacionalidades = (db: LocalDb) => listarSimple(db, 'cat_nacio
 export const listarColores = (db: LocalDb) => listarSimple(db, 'cat_colores');
 export const listarTiposVehiculo = (db: LocalDb) => listarSimple(db, 'cat_tipos_vehiculo');
 export const listarMarcas = (db: LocalDb) => listarSimple(db, 'cat_marcas');
+
+/** Prefijos de placa con sus tipos de vehículo (features/events/form/placa.ts). */
+export async function listarPrefijosPlaca(db: LocalDb): Promise<PrefijoPlacaItem[]> {
+  const prefijos = await db.getAllAsync<Omit<PrefijoPlacaItem, 'tipoVehiculoIds'>>(
+    'SELECT id, prefijo, nombre, patron, ejemplo FROM cat_prefijos_placa ORDER BY id',
+  );
+  const tipos = await db.getAllAsync<{ prefijo_placa_id: number; tipo_vehiculo_id: number }>(
+    'SELECT prefijo_placa_id, tipo_vehiculo_id FROM cat_prefijo_placa_tipos ORDER BY tipo_vehiculo_id',
+  );
+  return prefijos.map((p) => ({
+    ...p,
+    tipoVehiculoIds: tipos.filter((t) => t.prefijo_placa_id === p.id).map((t) => t.tipo_vehiculo_id),
+  }));
+}
+
+/** Nombres de catálogo de un vehículo (null si el Id no está o no se eligió). */
+export type NombresVehiculo = { tipo: string | null; marca: string | null; modelo: string | null; color: string | null };
+
+export async function obtenerNombresVehiculo(
+  db: LocalDb,
+  v: { tipoVehiculoId: number | null; marcaId: number | null; modeloId: number | null; colorId: number | null },
+): Promise<NombresVehiculo> {
+  const fila = await db.getFirstAsync<NombresVehiculo>(
+    `SELECT (SELECT nombre FROM cat_tipos_vehiculo WHERE id = ?) AS tipo,
+            (SELECT nombre FROM cat_marcas WHERE id = ?) AS marca,
+            (SELECT nombre FROM cat_modelos WHERE id = ?) AS modelo,
+            (SELECT nombre FROM cat_colores WHERE id = ?) AS color`,
+    v.tipoVehiculoId,
+    v.marcaId,
+    v.modeloId,
+    v.colorId,
+  );
+  return fila ?? { tipo: null, marca: null, modelo: null, color: null };
+}
 
 /** Modelos de la marca; si se indica el tipo de vehículo, solo los de ese tipo. */
 export const listarModelos = (db: LocalDb, marcaId: number, tipoVehiculoId?: number | null) =>

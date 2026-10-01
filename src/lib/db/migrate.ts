@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -21,6 +21,9 @@ const DATABASE_VERSION = 4;
  *
  * Desde la v4 los catálogos (cat_*) también viven aquí: se descargan de GET /api/catalogos/movil
  * (features/catalogos/local/catalogos-local.ts) y el formulario se llena sin conexión.
+ *
+ * Desde la v5 los vehículos son filas propias (evento_vehiculos, espejo de evento_vehiculo) y cada
+ * persona apunta al vehículo en que iba: un vehículo puede tener varias personas, o ninguna.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -141,6 +144,81 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
 
       -- Versión (hash que da la API) y fecha de la última descarga de los catálogos.
       CREATE TABLE catalogos_meta (clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
+    `);
+  }
+
+  if (currentVersion < 5) {
+    // v5: N vehículos por evento con N personas cada uno.
+    //  - evento_vehiculos.clave: identifica el vehículo en el formulario y en el envío (las
+    //    personas lo referencian por clave en el request, antes de que la API asigne Ids).
+    //  - evento_ciudadanos.vehiculo_id: vehículo del mismo evento (NULL = sin vehículo).
+    //  - Los vehículos guardados dentro de cada persona pasan a ser filas propias; dos personas
+    //    del mismo evento con la misma placa quedan en un solo vehículo.
+    //  - cat_prefijos_placa / cat_prefijo_placa_tipos: catálogo de formatos de placa.
+    await db.execAsync(`
+      CREATE TABLE evento_vehiculos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        evento_id INTEGER NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+        clave TEXT NOT NULL,
+        placa TEXT,
+        -- 1 = extranjera, temporal o ilegible: no se valida el formato con los prefijos.
+        placa_no_estandar INTEGER NOT NULL DEFAULT 0,
+        tipo_vehiculo_id INTEGER,
+        marca_id INTEGER,
+        marca_texto TEXT,
+        modelo_id INTEGER,
+        modelo_texto TEXT,
+        color_id INTEGER,
+        color_texto TEXT
+      );
+      CREATE INDEX idx_evento_vehiculos_evento_id ON evento_vehiculos(evento_id);
+
+      ALTER TABLE evento_ciudadanos ADD COLUMN vehiculo_id INTEGER REFERENCES evento_vehiculos(id);
+
+      INSERT INTO evento_vehiculos (evento_id, clave, placa, tipo_vehiculo_id, marca_id, marca_texto, modelo_id, modelo_texto, color_id, color_texto)
+      SELECT c.evento_id, 'migrado-' || c.id, c.placa, c.tipo_vehiculo_id, c.marca_id, c.marca_texto, c.modelo_id, c.modelo_texto, c.color_id, c.color_texto
+      FROM evento_ciudadanos c
+      WHERE COALESCE(c.placa, c.tipo_vehiculo_id, c.marca_id, c.marca_texto, c.modelo_id, c.modelo_texto, c.color_id, c.color_texto) IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM evento_ciudadanos c2
+          WHERE c2.evento_id = c.evento_id AND c2.placa = c.placa AND c2.id < c.id
+        );
+
+      UPDATE evento_ciudadanos SET vehiculo_id = (
+        SELECT v.id FROM evento_vehiculos v
+        WHERE v.evento_id = evento_ciudadanos.evento_id
+          AND (v.clave = 'migrado-' || evento_ciudadanos.id
+               OR (evento_ciudadanos.placa IS NOT NULL AND v.placa = evento_ciudadanos.placa))
+        ORDER BY v.id LIMIT 1
+      )
+      WHERE COALESCE(placa, tipo_vehiculo_id, marca_id, marca_texto, modelo_id, modelo_texto, color_id, color_texto) IS NOT NULL;
+
+      ALTER TABLE evento_ciudadanos DROP COLUMN placa;
+      ALTER TABLE evento_ciudadanos DROP COLUMN tipo_vehiculo_id;
+      ALTER TABLE evento_ciudadanos DROP COLUMN marca_id;
+      ALTER TABLE evento_ciudadanos DROP COLUMN marca_texto;
+      ALTER TABLE evento_ciudadanos DROP COLUMN modelo_id;
+      ALTER TABLE evento_ciudadanos DROP COLUMN modelo_texto;
+      ALTER TABLE evento_ciudadanos DROP COLUMN color_id;
+      ALTER TABLE evento_ciudadanos DROP COLUMN color_texto;
+
+      CREATE TABLE cat_prefijos_placa (
+        id INTEGER PRIMARY KEY,
+        prefijo TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        patron TEXT NOT NULL,
+        ejemplo TEXT NOT NULL
+      );
+      -- Sin filas para un prefijo = cualquier tipo de vehículo.
+      CREATE TABLE cat_prefijo_placa_tipos (
+        prefijo_placa_id INTEGER NOT NULL,
+        tipo_vehiculo_id INTEGER NOT NULL,
+        PRIMARY KEY (prefijo_placa_id, tipo_vehiculo_id)
+      );
+
+      -- La versión guardada no traía los prefijos: se altera para que la API la vea distinta y
+      -- mande el paquete completo (mientras tanto se siguen usando los catálogos guardados).
+      UPDATE catalogos_meta SET valor = valor || '-v4' WHERE clave = 'version';
     `);
   }
 

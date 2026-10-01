@@ -20,7 +20,7 @@ import {
   type RolCiudadano,
   type Sexo,
 } from '../types';
-import { toRegistrarEventoRequest, vehiculoVacio, type EventoForm, type InvolucradoForm } from '../form/evento-form';
+import { toRegistrarEventoRequest, type EventoForm, type InvolucradoForm, type VehiculoForm } from '../form/evento-form';
 
 /** Subconjunto de SQLiteDatabase (expo-sqlite) que se usa aquí. */
 export type LocalDb = {
@@ -54,7 +54,10 @@ export type EventoLocalListItem = {
   tipos: string[];
   categorias: CategoriaEvento[];
   ciudadanoPrincipal: string | null;
+  /** Primer vehículo registrado. */
   vehiculoDescripcion: string | null;
+  totalVehiculos: number;
+  totalPersonas: number;
   direccion: string | null;
   fechaHoraReporte: string;
   tipoCierreId: number | null;
@@ -115,7 +118,15 @@ type CiudadanoRow = {
   sexo: number;
   telefono: string | null;
   nacionalidad_id: number | null;
+  vehiculo_id: number | null;
+};
+
+type VehiculoRow = {
+  id: number;
+  evento_id: number;
+  clave: string;
   placa: string | null;
+  placa_no_estandar: number;
   tipo_vehiculo_id: number | null;
   marca_id: number | null;
   marca_texto: string | null;
@@ -125,8 +136,8 @@ type CiudadanoRow = {
   color_texto: string | null;
 };
 
-/** Ciudadano con los nombres del vehículo según los catálogos del dispositivo (LEFT JOIN). */
-type CiudadanoListadoRow = CiudadanoRow & {
+/** Vehículo con sus nombres según los catálogos del dispositivo (LEFT JOIN). */
+type VehiculoListadoRow = VehiculoRow & {
   tipo_vehiculo: string | null;
   marca: string | null;
   modelo: string | null;
@@ -151,7 +162,8 @@ const texto = (valor: string) => (valor.trim() ? valor.trim() : null);
 
 /**
  * Crea el evento (sin `localId`) o reemplaza sus datos. Lo enviado ya no se puede editar.
- * Tipos y personas se reescriben completos: son parte del evento, no tienen identidad propia.
+ * Tipos, vehículos y personas se reescriben completos: son parte del evento. Cada vehículo
+ * conserva su clave (la del formulario), con la que las personas indican en cuál iban.
  */
 export async function guardarEventoLocal(
   db: LocalDb,
@@ -205,6 +217,7 @@ export async function guardarEventoLocal(
       if (result.changes === 0) throw new EventoNoEditableError();
       await db.runAsync('DELETE FROM evento_tipos WHERE evento_id = ?', localId);
       await db.runAsync('DELETE FROM evento_ciudadanos WHERE evento_id = ?', localId);
+      await db.runAsync('DELETE FROM evento_vehiculos WHERE evento_id = ?', localId);
     }
 
     const tipoPorId = new Map(tipos.map((t) => [t.id, t]));
@@ -219,12 +232,31 @@ export async function guardarEventoLocal(
       );
     }
 
+    const vehiculoIdPorClave = new Map<string, number>();
+    for (const v of request.vehiculos) {
+      const result = await db.runAsync(
+        `INSERT INTO evento_vehiculos (evento_id, clave, placa, placa_no_estandar, tipo_vehiculo_id, marca_id, marca_texto,
+           modelo_id, modelo_texto, color_id, color_texto)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id,
+        v.clave,
+        v.placa,
+        v.placaNoEstandar ? 1 : 0,
+        v.tipoVehiculoId,
+        v.marcaId,
+        v.marcaTexto,
+        v.modeloId,
+        v.modeloTexto,
+        v.colorId,
+        v.colorTexto,
+      );
+      vehiculoIdPorClave.set(v.clave, result.lastInsertRowId);
+    }
+
     for (const c of request.ciudadanos) {
-      const v = c.vehiculo;
       await db.runAsync(
-        `INSERT INTO evento_ciudadanos (evento_id, rol, identificacion, nombre, apellido, sexo, telefono, nacionalidad_id,
-           placa, tipo_vehiculo_id, marca_id, marca_texto, modelo_id, modelo_texto, color_id, color_texto)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO evento_ciudadanos (evento_id, rol, identificacion, nombre, apellido, sexo, telefono, nacionalidad_id, vehiculo_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         c.rol,
         c.identificacion,
@@ -233,14 +265,7 @@ export async function guardarEventoLocal(
         c.sexo,
         c.telefono,
         c.nacionalidadId,
-        v?.placa ?? null,
-        v?.tipoVehiculoId ?? null,
-        v?.marcaId ?? null,
-        v?.marcaTexto ?? null,
-        v?.modeloId ?? null,
-        v?.modeloTexto ?? null,
-        v?.colorId ?? null,
-        v?.colorTexto ?? null,
+        c.vehiculoClave ? (vehiculoIdPorClave.get(c.vehiculoClave) ?? null) : null,
       );
     }
   });
@@ -292,22 +317,27 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
     `SELECT evento_id, nombre, categoria FROM evento_tipos WHERE evento_id IN (${marcadores})`,
     ...ids,
   );
-  const ciudadanos = await db.getAllAsync<CiudadanoListadoRow>(
-    `SELECT c.*, tv.nombre AS tipo_vehiculo, ma.nombre AS marca, mo.nombre AS modelo, co.nombre AS color
-     FROM evento_ciudadanos c
-       LEFT JOIN cat_tipos_vehiculo tv ON tv.id = c.tipo_vehiculo_id
-       LEFT JOIN cat_marcas ma ON ma.id = c.marca_id
-       LEFT JOIN cat_modelos mo ON mo.id = c.modelo_id
-       LEFT JOIN cat_colores co ON co.id = c.color_id
-     WHERE c.evento_id IN (${marcadores}) ORDER BY c.id`,
+  const ciudadanos = await db.getAllAsync<CiudadanoRow>(
+    `SELECT * FROM evento_ciudadanos WHERE evento_id IN (${marcadores}) ORDER BY id`,
+    ...ids,
+  );
+  const vehiculos = await db.getAllAsync<VehiculoListadoRow>(
+    `SELECT v.*, tv.nombre AS tipo_vehiculo, ma.nombre AS marca, mo.nombre AS modelo, co.nombre AS color
+     FROM evento_vehiculos v
+       LEFT JOIN cat_tipos_vehiculo tv ON tv.id = v.tipo_vehiculo_id
+       LEFT JOIN cat_marcas ma ON ma.id = v.marca_id
+       LEFT JOIN cat_modelos mo ON mo.id = v.modelo_id
+       LEFT JOIN cat_colores co ON co.id = v.color_id
+     WHERE v.evento_id IN (${marcadores}) ORDER BY v.id`,
     ...ids,
   );
 
   return eventos.map((e) => {
     const propios = tipos.filter((t) => t.evento_id === e.id);
     const personas = ciudadanos.filter((c) => c.evento_id === e.id);
-    const principal = personas[0];
-    const conVehiculo = personas.find((c) => c.placa || c.tipo_vehiculo_id || c.marca_id || c.marca_texto);
+    // Principal: el primer conductor (en un choque, el del primer vehículo); si no hay, la primera persona
+    const principal = personas.find((c) => c.rol === RolCiudadanoValue.Conductor) ?? personas[0];
+    const propiosVehiculos = vehiculos.filter((v) => v.evento_id === e.id);
 
     return {
       localId: e.id,
@@ -317,7 +347,9 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
       tipos: propios.map((t) => t.nombre ?? 'Tipo de evento').sort(),
       categorias: [...new Set(propios.map((t) => t.categoria).filter((c): c is number => c != null))].sort() as CategoriaEvento[],
       ciudadanoPrincipal: principal ? nombrePersona(principal) : null,
-      vehiculoDescripcion: conVehiculo ? describirVehiculo(conVehiculo) : null,
+      vehiculoDescripcion: propiosVehiculos[0] ? describirVehiculo(propiosVehiculos[0]) : null,
+      totalVehiculos: propiosVehiculos.length,
+      totalPersonas: personas.length,
       direccion: e.direccion,
       fechaHoraReporte: e.fecha_hora_reporte_utc,
       tipoCierreId: e.tipo_cierre_id,
@@ -354,6 +386,8 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
     localId,
   );
   const ciudadanos = await db.getAllAsync<CiudadanoRow>('SELECT * FROM evento_ciudadanos WHERE evento_id = ? ORDER BY id', localId);
+  const vehiculos = await db.getAllAsync<VehiculoRow>('SELECT * FROM evento_vehiculos WHERE evento_id = ? ORDER BY id', localId);
+  const clavePorId = new Map(vehiculos.map((v) => [v.id, v.clave]));
 
   return {
     localId: e.id,
@@ -373,7 +407,8 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
       tipoEventoIds: tipos.map((t) => t.tipo_evento_id),
       direccion: e.direccion ?? '',
       comentario: e.comentario ?? '',
-      involucrados: ciudadanos.map(aInvolucrado),
+      vehiculos: vehiculos.map(aVehiculo),
+      involucrados: ciudadanos.map((c) => aInvolucrado(c, c.vehiculo_id ? (clavePorId.get(c.vehiculo_id) ?? null) : null)),
     },
   };
 }
@@ -392,8 +427,23 @@ export function toRequestDeEnvio(evento: EventoLocal): RegistrarEventoRequest {
 
 // ------------------------------------------------------------------ Conversión
 
-function aInvolucrado(c: CiudadanoRow): InvolucradoForm {
-  const conVehiculo = !!(c.placa || c.tipo_vehiculo_id || c.marca_id || c.modelo_id || c.color_id || c.marca_texto || c.modelo_texto || c.color_texto);
+function aVehiculo(v: VehiculoRow): VehiculoForm {
+  return {
+    key: v.clave,
+    placa: v.placa ?? '',
+    placaNoEstandar: !!v.placa_no_estandar,
+    tipoVehiculoId: v.tipo_vehiculo_id,
+    marcaId: v.marca_id,
+    marcaTexto: v.marca_texto ?? '',
+    modeloId: v.modelo_id,
+    modeloTexto: v.modelo_texto ?? '',
+    colorId: v.color_id,
+    colorTexto: v.color_texto ?? '',
+    origen: null,
+  };
+}
+
+function aInvolucrado(c: CiudadanoRow, vehiculoKey: string | null): InvolucradoForm {
   return {
     key: `local-${c.id}`,
     rol: (c.rol as RolCiudadano) ?? RolCiudadanoValue.Otro,
@@ -404,20 +454,7 @@ function aInvolucrado(c: CiudadanoRow): InvolucradoForm {
     telefono: c.telefono ?? '',
     nacionalidadId: c.nacionalidad_id,
     origen: null,
-    conVehiculo,
-    vehiculo: conVehiculo
-      ? {
-          placa: c.placa ?? '',
-          tipoVehiculoId: c.tipo_vehiculo_id,
-          marcaId: c.marca_id,
-          marcaTexto: c.marca_texto ?? '',
-          modeloId: c.modelo_id,
-          modeloTexto: c.modelo_texto ?? '',
-          colorId: c.color_id,
-          colorTexto: c.color_texto ?? '',
-          origen: null,
-        }
-      : vehiculoVacio(),
+    vehiculoKey,
   };
 }
 
@@ -426,7 +463,7 @@ function nombrePersona(c: CiudadanoRow): string {
 }
 
 /** Como CatalogoVehiculo.Describir en la API: nombre del catálogo o, si no estaba en él, el texto libre. */
-function describirVehiculo(c: CiudadanoListadoRow): string {
+function describirVehiculo(c: VehiculoListadoRow): string {
   const marca = c.marca_id ? c.marca : c.marca_texto;
   const modelo = c.modelo_id ? c.modelo : c.modelo_texto;
   const color = c.color_id ? c.color : c.color_texto;

@@ -60,9 +60,15 @@ export const SexoValue = {
 } as const;
 export type Sexo = (typeof SexoValue)[keyof typeof SexoValue];
 
-/** Mirrors VehiculoEventoRequest (Application/Features/Operaciones/Eventos/RegistrarEvento.cs). */
+/**
+ * Mirrors VehiculoEventoRequest (Application/Features/Operaciones/Eventos/RegistrarEvento.cs).
+ * `clave` identifica el vehículo dentro del request: las personas la usan en `vehiculoClave`.
+ */
 export type VehiculoEventoRequest = {
+  clave: string;
   placa: string | null;
+  /** El agente confirmó que la placa no sigue los formatos del catálogo (extranjera, temporal...). */
+  placaNoEstandar: boolean;
   tipoVehiculoId: number | null;
   marcaId: number | null;
   modeloId: number | null;
@@ -81,7 +87,8 @@ export type CiudadanoEventoRequest = {
   sexo: Sexo;
   telefono: string | null;
   nacionalidadId: number | null;
-  vehiculo: VehiculoEventoRequest | null;
+  /** Clave del vehículo en que iba (null = sin vehículo). */
+  vehiculoClave: string | null;
 };
 
 /**
@@ -98,6 +105,7 @@ export type RegistrarEventoRequest = {
   fechaHoraLlegadaUtc: string;
   direccion: string | null;
   comentario: string | null;
+  vehiculos: VehiculoEventoRequest[];
   ciudadanos: CiudadanoEventoRequest[];
   /** El evento se envía ya cerrado en el dispositivo: la API aplica llegada y cierre al registrarlo. */
   fechaHoraCompletadoUtc?: string;

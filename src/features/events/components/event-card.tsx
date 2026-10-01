@@ -97,6 +97,10 @@ export function EventCard({ item, onEditar, onCerrar, onEnviar }: EventCardProps
         <View style={styles.details}>
           <DetailRow label="Ciudadano" value={item.ciudadanoPrincipal ?? 'No registrado'} />
           <DetailRow label="Vehículo" value={item.vehiculoDescripcion ?? 'N/A'} />
+          <DetailRow
+            label="Involucrados"
+            value={`${item.totalVehiculos} ${item.totalVehiculos === 1 ? 'vehículo' : 'vehículos'} · ${item.totalPersonas} ${item.totalPersonas === 1 ? 'persona' : 'personas'}`}
+          />
           <DetailRow label="Dirección" value={item.direccion ?? 'No especificada'} />
           {item.tipoCierreId != null && (
             <DetailRow label="Cierre" value={item.tipoCierre ?? `Tipo de cierre #${item.tipoCierreId}`} />

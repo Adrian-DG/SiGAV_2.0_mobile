@@ -9,6 +9,7 @@ import type {
   PagedResult,
   RegistrarEventoRequest,
   RegistrarEventoResult,
+  TipoCierre,
 } from './types';
 
 /**
@@ -43,4 +44,16 @@ export function getEventosUnidad(token: string, estado: EstadoEvento, page = 1, 
  */
 export function registrarEvento(token: string, request: RegistrarEventoRequest) {
   return apiRequest<RegistrarEventoResult>('/eventos', { method: 'POST', token, body: request });
+}
+
+/**
+ * PATCH /api/eventos/{id}/completar — EnCurso/Pendiente → Completado. Solo la unidad principal
+ * del evento puede completarlo (EventoAcceso.AsegurarPuedeOperar en la API).
+ */
+export function completarEvento(
+  token: string,
+  eventoId: number,
+  request: { tipoCierre: TipoCierre; fechaHoraCompletadoUtc?: string },
+) {
+  return apiRequest<void>(`/eventos/${eventoId}/completar`, { method: 'PATCH', token, body: request });
 }

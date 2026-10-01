@@ -15,10 +15,31 @@ export const CategoriaEventoValue = {
 } as const;
 export type CategoriaEvento = (typeof CategoriaEventoValue)[keyof typeof CategoriaEventoValue];
 
+/** Mirrors Domain/Enums/TipoCierreEventoEnum.cs ("mismos valores" que TipoCierreAsistenciaEnum en SiGAV 1.0). */
+export const TipoCierreValue = {
+  AsistidaPorMopc: 1,
+  Transferida911: 2,
+  TransferidaPoliciaNacional: 3,
+  TransferidaDigesett: 4,
+  CiudadanoResolvio: 5,
+  UnidadNoHizoContacto: 6,
+  FueraDeJurisdiccion: 7,
+} as const;
+export type TipoCierre = (typeof TipoCierreValue)[keyof typeof TipoCierreValue];
+
+export const TIPO_CIERRE_LABELS: Record<TipoCierre, string> = {
+  [TipoCierreValue.AsistidaPorMopc]: 'Asistida por MOPC',
+  [TipoCierreValue.Transferida911]: 'Transferida a 911',
+  [TipoCierreValue.TransferidaPoliciaNacional]: 'Transferida a Policía Nacional',
+  [TipoCierreValue.TransferidaDigesett]: 'Transferida a DIGESETT',
+  [TipoCierreValue.CiudadanoResolvio]: 'Ciudadano resolvió',
+  [TipoCierreValue.UnidadNoHizoContacto]: 'Unidad no hizo contacto',
+  [TipoCierreValue.FueraDeJurisdiccion]: 'Fuera de jurisdicción',
+};
+
 /**
- * Item de listado de eventos (Asistencia en SiGAV 1.0). El endpoint que lo sirve
- * (GET /api/eventos) todavía no existe en la API — ver features/events/api.ts.
- * Forma esperada según el agregado Domain/Entities/Operaciones/Evento.cs.
+ * Item de listado de eventos (Asistencia en SiGAV 1.0), servido por GET /api/eventos
+ * (features/events/api.ts). Forma según EventoListItemViewModel (Application/Features/Operaciones/Eventos).
  */
 export type EventoListItem = {
   id: number;

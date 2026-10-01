@@ -155,7 +155,7 @@ export default function HomeScreen() {
             <SegmentedControl options={ESTADO_OPTIONS} value={estado} onChange={setEstado} />
           </View>
         }
-        renderItem={({ item }) => <EventCard item={item} />}
+        renderItem={({ item }) => <EventCard item={item} onChanged={refetchAll} />}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           eventsState.status === 'loading' ? (

@@ -75,7 +75,7 @@ export default function LoginScreen() {
 
     if (!isFichaComplete(ficha)) {
       setFichaStatus('invalid');
-      setFichaError('Ficha inválida. Use solo letras, números y guiones, ej. CA-1759.');
+      setFichaError('Formato inválido. Use AA-0000, ej. CA-1759.');
       return;
     }
 

@@ -27,13 +27,18 @@ import {
 import { RolCiudadanoValue, SexoValue, type RolCiudadano, type Sexo } from '../types';
 import { EstadoBusqueda, fechaCorta, type Busqueda } from './estado-busqueda';
 
+/** Roles que el agente puede asignar en campo. */
 const ROL_OPTIONS: { label: string; value: RolCiudadano }[] = [
   { label: 'Conductor', value: RolCiudadanoValue.Conductor },
   { label: 'Pasajero', value: RolCiudadanoValue.Pasajero },
   { label: 'Peatón', value: RolCiudadanoValue.Peaton },
-  { label: 'Paciente', value: RolCiudadanoValue.Paciente },
-  { label: 'Otro', value: RolCiudadanoValue.Otro },
 ];
+
+/** Roles que ya no se ofrecen, pero que puede tener una persona guardada antes (se muestran para poder cambiarlos). */
+const ROL_ANTERIOR: Partial<Record<RolCiudadano, string>> = {
+  [RolCiudadanoValue.Paciente]: 'Paciente',
+  [RolCiudadanoValue.Otro]: 'Otro',
+};
 
 const SEXO_OPTIONS: { label: string; value: Sexo }[] = [
   { label: 'No indicado', value: SexoValue.NoIndicado },
@@ -60,6 +65,8 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
   const nacionalidades = useCatalogo('nacionalidades', listarNacionalidades);
 
   const errores = intentoGuardar ? validarInvolucrado(value, contexto) : {};
+  const rolAnterior = ROL_ANTERIOR[value.rol];
+  const opcionesRol = rolAnterior ? [...ROL_OPTIONS, { label: rolAnterior, value: value.rol }] : ROL_OPTIONS;
 
   // SelectField trabaja con Ids numéricos: posición del vehículo en el evento (1, 2, ...)
   const opcionesVehiculo = contexto.vehiculos.map((v, i) => ({ id: i + 1, nombre: etiquetaVehiculo(v.key) }));
@@ -93,7 +100,7 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
   return (
     <Card style={styles.card}>
       <Text style={styles.sectionTitle}>Persona</Text>
-      <SegmentedControl options={ROL_OPTIONS} value={value.rol} onChange={(rol) => onChange(cambiarRol(value, rol))} />
+      <SegmentedControl options={opcionesRol} value={value.rol} onChange={(rol) => onChange(cambiarRol(value, rol))} />
 
       {rolAdmiteVehiculo(value.rol) && (
         <SelectField

@@ -318,9 +318,9 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
               </Card>
 
               <Card style={styles.card}>
-                <Text style={styles.sectionTitle}>Peatones y otras personas</Text>
+                <Text style={styles.sectionTitle}>Peatones</Text>
                 {sueltos.length === 0 && (
-                  <Text style={styles.muted}>Personas que no iban en un vehículo (peatones, pacientes, testigos…).</Text>
+                  <Text style={styles.muted}>Personas involucradas que no iban en un vehículo.</Text>
                 )}
                 {sueltos.map((inv) => (
                   <View key={inv.key} style={styles.involucrado}>

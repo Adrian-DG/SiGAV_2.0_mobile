@@ -188,7 +188,11 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
           {/* 1. Datos que no dependen del agente */}
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Evento en campo</Text>
-            <Dato label="Unidad" value={`${session!.agente.ficha ?? '—'} · ${session!.agente.nombre ?? ''}`} />
+            <Dato label="Unidad" value={session!.agente.ficha} />
+            <Dato
+              label="Agente"
+              value={[session!.agente.rango, session!.agente.nombre, session!.agente.institucion].filter(Boolean).join(' · ')}
+            />
             <Dato
               label="Llegada"
               value={new Date(form.fechaHoraLlegada).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}

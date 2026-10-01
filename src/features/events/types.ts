@@ -135,6 +135,28 @@ export type EstadisticasEventosResponse = {
   resumen: ResumenEventos;
 };
 
+/** Mirrors Domain/Enums/JerarquiaEnum.cs. */
+export const JerarquiaValue = {
+  Regional: 1,
+  Tramo: 2,
+  Unidad: 3,
+} as const;
+export type Jerarquia = (typeof JerarquiaValue)[keyof typeof JerarquiaValue];
+
+/**
+ * Mirrors Application/Features/Operaciones/Unidades/GetDenominacionActual.cs DenominacionActualViewModel.
+ * esEncargado: nivel Supervisor Regional o Encargado de Tramo (ve estadísticas más allá de su unidad).
+ */
+export type DenominacionActual = {
+  id: number;
+  nombre: string;
+  tramoId: number;
+  tramo: string;
+  nivel: string;
+  jerarquia: Jerarquia;
+  esEncargado: boolean;
+};
+
 /** Mirrors Domain/ViewModels/NamedViewModel.cs. */
 export type NamedViewModel = {
   id: number;

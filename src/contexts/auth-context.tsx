@@ -1,7 +1,7 @@
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
 import { getSesionActual, loginMovil } from '@/features/auth/api';
-import { clearSession, persistSession, restoreSession, type Session } from '@/features/auth/session-store';
+import { clearSession, persistSession, restoreSession, sesionDesdeToken, type Session } from '@/features/auth/session-store';
 import { setUnauthorizedHandler } from '@/lib/api-client';
 import { secureStorage } from '@/lib/storage';
 
@@ -32,7 +32,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    restoreSession({ storage: secureStorage, fetchSesion: getSesionActual })
+    restoreSession({ storage: secureStorage, verificarToken: getSesionActual })
       .then(setSession)
       .catch(() => setSession(null))
       .finally(() => setIsLoading(false));
@@ -56,8 +56,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       notice,
       async signIn(cedula: string, ficha: string) {
         const { token } = await loginMovil(cedula, ficha);
-        const agente = await getSesionActual(token);
-        const nueva = { token, agente };
+        // Agente y unidad vienen en el token: no hace falta otra petición para conocerlos
+        const nueva = sesionDesdeToken(token);
         await persistSession(secureStorage, nueva);
         setNotice(null);
         setSession(nueva);

@@ -227,8 +227,8 @@ const styles = StyleSheet.create({
   },
   apiBadge: {
     position: 'absolute',
-    top: 12,
-    right: 16,
+    top: 50,
+    left: 16,
   },
   brandPanel: {
     alignItems: 'center',

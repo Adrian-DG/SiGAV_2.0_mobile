@@ -2,10 +2,10 @@ import { apiRequest } from '@/lib/api-client';
 import { diaOperativo } from '@/lib/fecha-operativa';
 
 import type {
+  DenominacionActual,
   EstadisticasEventosResponse,
   EstadoEvento,
   EventoListItem,
-  NamedViewModel,
   PagedResult,
   RegistrarEventoRequest,
   RegistrarEventoResult,
@@ -24,9 +24,9 @@ export function getEstadisticasEventosHoy(token: string) {
   });
 }
 
-/** GET /api/unidades/{id}/denominacion-actual */
+/** GET /api/unidades/{id}/denominacion-actual — denominación, tramo y nivel con que opera la unidad. */
 export function getDenominacionActual(token: string, unidadId: number) {
-  return apiRequest<NamedViewModel>(`/unidades/${unidadId}/denominacion-actual`, { token });
+  return apiRequest<DenominacionActual>(`/unidades/${unidadId}/denominacion-actual`, { token });
 }
 
 /**

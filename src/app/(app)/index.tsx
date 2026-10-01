@@ -25,7 +25,7 @@ import {
   type EventoLocalListItem,
 } from '@/features/events/local/eventos-local';
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
-import type { ResumenEventos } from '@/features/events/types';
+import type { DenominacionActual, ResumenEventos } from '@/features/events/types';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 
 const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
@@ -52,7 +52,7 @@ export default function HomeScreen() {
   const [conteo, setConteo] = useState<Record<EstatusLocal, number> | null>(null);
   const [resumen, setResumen] = useState<ResumenEventos | null>(null);
   const [isLoadingResumen, setIsLoadingResumen] = useState(true);
-  const [denominacion, setDenominacion] = useState<string | null>(null);
+  const [denominacion, setDenominacion] = useState<DenominacionActual | null>(null);
   const [eventsState, setEventsState] = useState<EventsState>({ status: 'loading' });
   // Bumping this re-triggers every load effect below; it's how pull-to-refresh and the
   // "Reintentar" button re-fetch without exposing the fetchers themselves outside the effects.
@@ -60,8 +60,6 @@ export default function HomeScreen() {
 
   const token = session?.token;
   const unidadId = session?.agente.unidadId;
-  const agenteNombre = session?.agente.nombre;
-  const agenteFicha = session?.agente.ficha;
 
   const agenteId = sesion?.agenteId;
 
@@ -116,7 +114,7 @@ export default function HomeScreen() {
     async function run() {
       try {
         const response = await getDenominacionActual(token!, unidadId!);
-        if (!cancelled) setDenominacion(response.nombre);
+        if (!cancelled) setDenominacion(response);
       } catch {
         if (!cancelled) setDenominacion(null);
       }
@@ -191,13 +189,19 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refetchAll} />}
         ListHeaderComponent={
           <View style={styles.listHeader}>
-            <UnitSummaryCard
-              nombre={agenteNombre ?? 'Agente'}
-              ficha={agenteFicha ?? '—'}
-              denominacion={denominacion}
-              resumen={resumen}
-              isLoadingResumen={isLoadingResumen}
-            />
+            {!!session && (
+              <UnitSummaryCard
+                institucion={session.agente.institucion}
+                rango={session.agente.rango}
+                nombre={session.agente.nombre}
+                ficha={session.agente.ficha}
+                denominacion={denominacion}
+                resumen={resumen}
+                isLoadingResumen={isLoadingResumen}
+                // Pendiente: la app aún no tiene pantalla de estadísticas para encargados
+                onVerEstadisticas={() => {}}
+              />
+            )}
             <SegmentedControl
               options={ESTATUS.map((e) => ({
                 label: conteo?.[e] ? `${ESTATUS_LOCAL_LABELS[e]} (${conteo[e]})` : ESTATUS_LOCAL_LABELS[e],

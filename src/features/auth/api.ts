@@ -23,7 +23,10 @@ export function loginMovil(cedula: string, ficha: string) {
   });
 }
 
-/** GET /api/authentication/sesion — identidad de la sesión actual, para hidratar el estado tras el login. */
+/**
+ * GET /api/authentication/sesion — identidad de la sesión actual. La app ya la lee del token
+ * (lib/jwt.ts); la usa para confirmar que la API sigue aceptándolo al restaurar la sesión.
+ */
 export function getSesionActual(token: string) {
   return apiRequest<SesionActual>('/authentication/sesion', { token });
 }

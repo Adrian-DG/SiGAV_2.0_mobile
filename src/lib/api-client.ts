@@ -1,4 +1,5 @@
 import { apiConfig } from '@/lib/api-config';
+import { verificarConexion } from '@/lib/conexion';
 
 /** Matches the { message, errors } shape written by Presentation/Middleware/ApiExceptionHandler.cs. */
 export class ApiError extends Error {
@@ -10,6 +11,17 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.errors = errors;
+  }
+}
+
+/**
+ * La petición no se intentó: el dispositivo no tiene conexión (ver lib/conexion.ts). Es un ApiError
+ * con status NETWORK_ERROR_STATUS, así que se maneja igual que cualquier falla de red.
+ */
+export class SinConexionError extends ApiError {
+  constructor(message: string) {
+    super(NETWORK_ERROR_STATUS, message);
+    this.name = 'SinConexionError';
   }
 }
 
@@ -54,6 +66,10 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', query, body, token, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
+
+  // Sin conexión no se intenta: se evita esperar el timeout completo para fallar igual
+  const conexion = await verificarConexion(apiConfig.environment);
+  if (!conexion.conectado) throw new SinConexionError(conexion.mensaje);
 
   const controller = new AbortController();
   let timedOut = false;

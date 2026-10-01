@@ -198,8 +198,7 @@ export default function HomeScreen() {
                 denominacion={denominacion}
                 resumen={resumen}
                 isLoadingResumen={isLoadingResumen}
-                // Pendiente: la app aún no tiene pantalla de estadísticas para encargados
-                onVerEstadisticas={() => {}}
+                onVerEstadisticas={() => router.push('/estadisticas')}
               />
             )}
             <SegmentedControl

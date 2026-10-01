@@ -12,7 +12,6 @@ import { Palette } from '@/constants/colors';
 import { EventoFormulario } from '@/features/events/components/evento-formulario';
 import { guardarEventoLocal, obtenerEventoLocal, type EventoLocal } from '@/features/events/local/eventos-local';
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
-import { TIPO_CIERRE_LABELS } from '@/features/events/types';
 
 type Carga = { estado: 'cargando' } | { estado: 'listo'; evento: EventoLocal } | { estado: 'no-disponible'; mensaje: string };
 
@@ -78,8 +77,8 @@ export default function EditEventScreen() {
       capturarUbicacion={false}
       textoGuardar="Guardar cambios"
       aviso={
-        evento.tipoCierre != null
-          ? `Cerrado como "${TIPO_CIERRE_LABELS[evento.tipoCierre]}". Puede corregirlo hasta enviarlo.`
+        evento.tipoCierreId != null
+          ? `Cerrado como "${evento.tipoCierre ?? `tipo #${evento.tipoCierreId}`}". Puede corregirlo hasta enviarlo.`
           : null
       }
       onGuardar={async (form, tipos) => {

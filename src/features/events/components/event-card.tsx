@@ -9,7 +9,6 @@ import { Tag } from '@/components/ui/tag';
 import { Palette } from '@/constants/colors';
 import { CompletarEventoSheet } from '@/features/events/components/completar-evento-sheet';
 import type { EventoLocalListItem } from '@/features/events/local/eventos-local';
-import { TIPO_CIERRE_LABELS, type TipoCierre } from '@/features/events/types';
 
 function formatFecha(iso: string): string {
   const date = new Date(iso);
@@ -32,7 +31,7 @@ type EventCardProps = {
   item: EventoLocalListItem;
   onEditar: () => void;
   /** Guarda el tipo de cierre en el dispositivo (el evento pasa a "por enviar"). */
-  onCerrar: (tipoCierre: TipoCierre) => Promise<void>;
+  onCerrar: (tipoCierreId: number) => Promise<void>;
   /** Envía el evento cerrado a la API. */
   onEnviar: () => Promise<void>;
 };
@@ -99,7 +98,9 @@ export function EventCard({ item, onEditar, onCerrar, onEnviar }: EventCardProps
           <DetailRow label="Ciudadano" value={item.ciudadanoPrincipal ?? 'No registrado'} />
           <DetailRow label="Vehículo" value={item.vehiculoDescripcion ?? 'N/A'} />
           <DetailRow label="Dirección" value={item.direccion ?? 'No especificada'} />
-          {item.tipoCierre != null && <DetailRow label="Cierre" value={TIPO_CIERRE_LABELS[item.tipoCierre]} />}
+          {item.tipoCierreId != null && (
+            <DetailRow label="Cierre" value={item.tipoCierre ?? `Tipo de cierre #${item.tipoCierreId}`} />
+          )}
           {item.estatus === 'por_enviar' && (
             <Button label="Cambiar tipo de cierre" variant="ghost" onPress={() => setCerrarVisible(true)} />
           )}
@@ -119,7 +120,7 @@ export function EventCard({ item, onEditar, onCerrar, onEnviar }: EventCardProps
 
       <CompletarEventoSheet
         visible={cerrarVisible}
-        inicial={item.tipoCierre}
+        inicial={item.tipoCierreId}
         onClose={() => setCerrarVisible(false)}
         onConfirm={onCerrar}
       />

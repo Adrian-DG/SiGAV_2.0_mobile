@@ -19,7 +19,6 @@ import {
   type RegistrarEventoRequest,
   type RolCiudadano,
   type Sexo,
-  type TipoCierre,
 } from '../types';
 import { toRegistrarEventoRequest, vehiculoVacio, type EventoForm, type InvolucradoForm } from '../form/evento-form';
 
@@ -58,7 +57,9 @@ export type EventoLocalListItem = {
   vehiculoDescripcion: string | null;
   direccion: string | null;
   fechaHoraReporte: string;
-  tipoCierre: TipoCierre | null;
+  tipoCierreId: number | null;
+  /** Nombre en el catálogo del dispositivo (null si el tipo ya no está en él). */
+  tipoCierre: string | null;
   syncError: string | null;
 };
 
@@ -67,7 +68,8 @@ export type EventoLocal = {
   serverId: number | null;
   estatus: EstatusLocal;
   estado: EstadoEvento;
-  tipoCierre: TipoCierre | null;
+  tipoCierreId: number | null;
+  tipoCierre: string | null;
   fechaHoraCompletado: string | null;
   syncError: string | null;
   form: EventoForm;
@@ -96,7 +98,9 @@ type EventoRow = {
   fecha_hora_reporte_utc: string;
   fecha_hora_llegada_utc: string | null;
   fecha_hora_completado_utc: string | null;
-  tipo_cierre: number | null;
+  tipo_cierre_id: number | null;
+  /** cat_tipos_cierre.nombre (LEFT JOIN). */
+  tipo_cierre: string | null;
   synced: number;
   sync_error: string | null;
 };
@@ -120,6 +124,17 @@ type CiudadanoRow = {
   color_id: number | null;
   color_texto: string | null;
 };
+
+/** Ciudadano con los nombres del vehículo según los catálogos del dispositivo (LEFT JOIN). */
+type CiudadanoListadoRow = CiudadanoRow & {
+  tipo_vehiculo: string | null;
+  marca: string | null;
+  modelo: string | null;
+  color: string | null;
+};
+
+const SELECT_EVENTO = `SELECT e.*, tc.nombre AS tipo_cierre
+  FROM eventos e LEFT JOIN cat_tipos_cierre tc ON tc.id = e.tipo_cierre_id`;
 
 const estatusDe = (row: { synced: number; estado: number }): EstatusLocal =>
   row.synced ? 'enviado' : row.estado === EstadoEventoValue.Completado ? 'por_enviar' : 'en_curso';
@@ -237,13 +252,13 @@ export async function guardarEventoLocal(
  * Cierra el evento en el dispositivo (queda "por enviar"). Puede volver a llamarse para cambiar
  * el tipo de cierre mientras no se haya enviado; la hora de cierre es la del primer cierre.
  */
-export async function cerrarEventoLocal(db: LocalDb, localId: number, tipoCierre: TipoCierre, ahora: Date = new Date()) {
+export async function cerrarEventoLocal(db: LocalDb, localId: number, tipoCierreId: number, ahora: Date = new Date()) {
   const result = await db.runAsync(
-    `UPDATE eventos SET estado = ?, tipo_cierre = ?, fecha_hora_completado_utc = COALESCE(fecha_hora_completado_utc, ?),
+    `UPDATE eventos SET estado = ?, tipo_cierre_id = ?, fecha_hora_completado_utc = COALESCE(fecha_hora_completado_utc, ?),
        sync_error = NULL, updated_at = ?
      WHERE id = ? AND synced = 0`,
     EstadoEventoValue.Completado,
-    tipoCierre,
+    tipoCierreId,
     ahora.toISOString(),
     ahora.toISOString(),
     localId,
@@ -264,8 +279,8 @@ export async function registrarErrorEnvio(db: LocalDb, localId: number, mensaje:
 /** Eventos de la sesión con ese estatus; más recientes primero. */
 export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, estatus: EstatusLocal): Promise<EventoLocalListItem[]> {
   const eventos = await db.getAllAsync<EventoRow>(
-    `SELECT * FROM eventos WHERE agente_id = ? AND unidad_id = ? AND ${FILTRO_ESTATUS[estatus]}
-     ORDER BY fecha_hora_reporte_utc DESC, id DESC`,
+    `${SELECT_EVENTO} WHERE e.agente_id = ? AND e.unidad_id = ? AND ${FILTRO_ESTATUS[estatus]}
+     ORDER BY e.fecha_hora_reporte_utc DESC, e.id DESC`,
     sesion.agenteId,
     sesion.unidadId,
   );
@@ -277,8 +292,14 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
     `SELECT evento_id, nombre, categoria FROM evento_tipos WHERE evento_id IN (${marcadores})`,
     ...ids,
   );
-  const ciudadanos = await db.getAllAsync<CiudadanoRow>(
-    `SELECT * FROM evento_ciudadanos WHERE evento_id IN (${marcadores}) ORDER BY id`,
+  const ciudadanos = await db.getAllAsync<CiudadanoListadoRow>(
+    `SELECT c.*, tv.nombre AS tipo_vehiculo, ma.nombre AS marca, mo.nombre AS modelo, co.nombre AS color
+     FROM evento_ciudadanos c
+       LEFT JOIN cat_tipos_vehiculo tv ON tv.id = c.tipo_vehiculo_id
+       LEFT JOIN cat_marcas ma ON ma.id = c.marca_id
+       LEFT JOIN cat_modelos mo ON mo.id = c.modelo_id
+       LEFT JOIN cat_colores co ON co.id = c.color_id
+     WHERE c.evento_id IN (${marcadores}) ORDER BY c.id`,
     ...ids,
   );
 
@@ -299,7 +320,8 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
       vehiculoDescripcion: conVehiculo ? describirVehiculo(conVehiculo) : null,
       direccion: e.direccion,
       fechaHoraReporte: e.fecha_hora_reporte_utc,
-      tipoCierre: e.tipo_cierre as TipoCierre | null,
+      tipoCierreId: e.tipo_cierre_id,
+      tipoCierre: e.tipo_cierre,
       syncError: e.sync_error,
     };
   });
@@ -320,7 +342,7 @@ export async function contarEventosLocales(db: LocalDb, sesion: SesionEvento): P
 /** Evento completo de la sesión, listo para el formulario de edición o para enviarse. */
 export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: SesionEvento): Promise<EventoLocal | null> {
   const e = await db.getFirstAsync<EventoRow>(
-    'SELECT * FROM eventos WHERE id = ? AND agente_id = ? AND unidad_id = ?',
+    `${SELECT_EVENTO} WHERE e.id = ? AND e.agente_id = ? AND e.unidad_id = ?`,
     localId,
     sesion.agenteId,
     sesion.unidadId,
@@ -338,7 +360,8 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
     serverId: e.server_id,
     estatus: estatusDe(e),
     estado: e.estado as EstadoEvento,
-    tipoCierre: e.tipo_cierre as TipoCierre | null,
+    tipoCierreId: e.tipo_cierre_id,
+    tipoCierre: e.tipo_cierre,
     fechaHoraCompletado: e.fecha_hora_completado_utc,
     syncError: e.sync_error,
     form: {
@@ -357,13 +380,13 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
 
 /** Lo que se envía a la API: el evento con su llegada y su cierre. */
 export function toRequestDeEnvio(evento: EventoLocal): RegistrarEventoRequest {
-  if (evento.estado !== EstadoEventoValue.Completado || evento.tipoCierre == null || !evento.fechaHoraCompletado) {
+  if (evento.estado !== EstadoEventoValue.Completado || evento.tipoCierreId == null || !evento.fechaHoraCompletado) {
     throw new Error('Seleccione el tipo de cierre antes de enviar el evento.');
   }
   return {
     ...toRegistrarEventoRequest(evento.form),
     fechaHoraCompletadoUtc: evento.fechaHoraCompletado,
-    tipoCierre: evento.tipoCierre,
+    tipoCierreId: evento.tipoCierreId,
   };
 }
 
@@ -402,8 +425,11 @@ function nombrePersona(c: CiudadanoRow): string {
   return texto(`${c.nombre ?? ''} ${c.apellido ?? ''}`) ?? c.identificacion ?? 'Persona no identificada';
 }
 
-/** Sin catálogo a mano: placa y lo que se escribió como texto. */
-function describirVehiculo(c: CiudadanoRow): string {
-  const marcaModelo = texto(`${c.marca_texto ?? ''} ${c.modelo_texto ?? ''}`);
-  return [marcaModelo, c.color_texto, c.placa ?? 'Sin placa'].filter(Boolean).join(' · ');
+/** Como CatalogoVehiculo.Describir en la API: nombre del catálogo o, si no estaba en él, el texto libre. */
+function describirVehiculo(c: CiudadanoListadoRow): string {
+  const marca = c.marca_id ? c.marca : c.marca_texto;
+  const modelo = c.modelo_id ? c.modelo : c.modelo_texto;
+  const color = c.color_id ? c.color : c.color_texto;
+  const marcaModelo = texto(`${marca ?? ''} ${modelo ?? ''}`);
+  return [marcaModelo ?? c.tipo_vehiculo, color, c.placa ?? 'Sin placa'].filter(Boolean).join(' · ');
 }

@@ -13,16 +13,37 @@ export type TipoEventoItem = CatalogoItem & {
   categoria: CategoriaEvento;
 };
 
-export const getTiposEvento = (token: string) => apiRequest<TipoEventoItem[]>('/catalogos/tipos-evento', { token });
-export const getProvincias = (token: string) => apiRequest<CatalogoItem[]>('/catalogos/provincias', { token });
-export const getMunicipios = (token: string, provinciaId: number) =>
-  apiRequest<CatalogoItem[]>(`/catalogos/provincias/${provinciaId}/municipios`, { token });
-export const getTiposVehiculo = (token: string) => apiRequest<CatalogoItem[]>('/catalogos/tipos-vehiculo', { token });
-export const getMarcas = (token: string) => apiRequest<CatalogoItem[]>('/catalogos/marcas', { token });
-export const getModelos = (token: string, marcaId: number, tipoVehiculoId?: number | null) =>
-  apiRequest<CatalogoItem[]>(`/catalogos/marcas/${marcaId}/modelos`, {
+/** Mirrors GetCatalogosMovil.cs MunicipioItemViewModel. */
+export type MunicipioItem = CatalogoItem & { provinciaId: number };
+
+/** Mirrors ModeloItemViewModel. */
+export type ModeloItem = CatalogoItem & { marcaId: number; tipoVehiculoId: number };
+
+/** Mirrors CatalogosMovilViewModel: todos los catálogos activos que se guardan en el dispositivo. */
+export type CatalogosMovil = {
+  provincias: CatalogoItem[];
+  municipios: MunicipioItem[];
+  tiposEvento: TipoEventoItem[];
+  tiposCierre: CatalogoItem[];
+  nacionalidades: CatalogoItem[];
+  colores: CatalogoItem[];
+  tiposVehiculo: CatalogoItem[];
+  marcas: CatalogoItem[];
+  modelos: ModeloItem[];
+};
+
+/** Mirrors CatalogosMovilResult: `catalogos` es null si el dispositivo ya tiene esa versión. */
+export type CatalogosMovilResult = {
+  version: string;
+  catalogos: CatalogosMovil | null;
+};
+
+/** El paquete completo puede tardar con mala señal: más margen que el resto de peticiones. */
+const CATALOGOS_TIMEOUT_MS = 60_000;
+
+export const getCatalogosMovil = (token: string, versionActual: string | null) =>
+  apiRequest<CatalogosMovilResult>('/catalogos/movil', {
     token,
-    query: { tipoVehiculoId: tipoVehiculoId ?? undefined },
+    query: { version: versionActual ?? undefined },
+    timeoutMs: CATALOGOS_TIMEOUT_MS,
   });
-export const getColores = (token: string) => apiRequest<CatalogoItem[]>('/catalogos/colores', { token });
-export const getNacionalidades = (token: string) => apiRequest<CatalogoItem[]>('/catalogos/nacionalidades', { token });

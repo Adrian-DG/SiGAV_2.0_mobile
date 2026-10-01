@@ -13,7 +13,9 @@ import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
-import { getMunicipios, getProvincias, getTiposEvento, type TipoEventoItem } from '@/features/catalogos/api';
+import type { TipoEventoItem } from '@/features/catalogos/api';
+import { useCatalogos } from '@/features/catalogos/catalogos-context';
+import { listarMunicipios, listarProvincias, listarTiposEvento } from '@/features/catalogos/local/catalogos-local';
 import { InvolucradoEditor } from '@/features/events/components/involucrado-editor';
 import {
   nuevoInvolucrado,
@@ -66,10 +68,11 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
   const [guardando, setGuardando] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState<string | null>(null);
 
-  const tipos = useCatalogo('tipos-evento', () => getTiposEvento(token));
-  const provincias = useCatalogo('provincias', () => getProvincias(token));
+  const catalogos = useCatalogos();
+  const tipos = useCatalogo('tipos-evento', listarTiposEvento);
+  const provincias = useCatalogo('provincias', listarProvincias);
   const provinciaId = form.provinciaId;
-  const municipios = useCatalogo(provinciaId ? `municipios:${provinciaId}` : null, () => getMunicipios(token, provinciaId!));
+  const municipios = useCatalogo(provinciaId ? `municipios:${provinciaId}` : null, (db) => listarMunicipios(db, provinciaId!));
 
   // Un evento nuevo: la unidad suele operar en la misma zona, se preselecciona el último municipio
   useEffect(() => {
@@ -141,6 +144,18 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {!!aviso && <Text style={styles.aviso}>{aviso}</Text>}
+          {catalogos.disponibles === false && (
+            <Card style={styles.card}>
+              <Text style={styles.aviso}>
+                {catalogos.sincronizando
+                  ? 'Descargando los catálogos (provincias, tipos de evento, vehículos…). Solo hace falta conexión esta vez.'
+                  : `Los catálogos aún no se han descargado en este dispositivo. Conéctese a internet para descargarlos.${
+                      catalogos.error ? ` (${catalogos.error})` : ''
+                    }`}
+              </Text>
+              {!catalogos.sincronizando && <Button label="Descargar catálogos" variant="ghost" onPress={catalogos.sincronizar} />}
+            </Card>
+          )}
 
           {/* 1. Datos que no dependen del agente */}
           <Card style={styles.card}>

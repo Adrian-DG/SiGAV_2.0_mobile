@@ -1,5 +1,11 @@
 import { Stack } from 'expo-router';
 
+import { CatalogosProvider } from '@/features/catalogos/catalogos-context';
+
 export default function AppLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <CatalogosProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </CatalogosProvider>
+  );
 }

@@ -7,7 +7,13 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
-import { getColores, getMarcas, getModelos, getNacionalidades, getTiposVehiculo } from '@/features/catalogos/api';
+import {
+  listarColores,
+  listarMarcas,
+  listarModelos,
+  listarNacionalidades,
+  listarTiposVehiculo,
+} from '@/features/catalogos/local/catalogos-local';
 import { buscarCiudadano, buscarVehiculo } from '@/features/historico/api';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { ApiError } from '@/lib/api-client';
@@ -62,12 +68,12 @@ export function InvolucradoEditor({ token, value, onChange, onSave, onCancel }: 
   const [colorManual, setColorManual] = useState(!!value.vehiculo.colorTexto);
   const [intentoGuardar, setIntentoGuardar] = useState(false);
 
-  const nacionalidades = useCatalogo('nacionalidades', () => getNacionalidades(token));
-  const tiposVehiculo = useCatalogo('tipos-vehiculo', () => getTiposVehiculo(token));
-  const marcas = useCatalogo('marcas', () => getMarcas(token));
+  const nacionalidades = useCatalogo('nacionalidades', listarNacionalidades);
+  const tiposVehiculo = useCatalogo('tipos-vehiculo', listarTiposVehiculo);
+  const marcas = useCatalogo('marcas', listarMarcas);
   const marcaId = value.vehiculo.marcaId;
-  const modelos = useCatalogo(marcaId ? `modelos:${marcaId}` : null, () => getModelos(token, marcaId!));
-  const colores = useCatalogo('colores', () => getColores(token));
+  const modelos = useCatalogo(marcaId ? `modelos:${marcaId}` : null, (db) => listarModelos(db, marcaId!));
+  const colores = useCatalogo('colores', listarColores);
 
   const errores = intentoGuardar ? validarInvolucrado(value) : {};
   const setVehiculo = (vehiculo: Partial<VehiculoForm>) => onChange({ ...value, vehiculo: { ...value.vehiculo, ...vehiculo } });

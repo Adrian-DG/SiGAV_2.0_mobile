@@ -1,28 +1,29 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { Palette } from '@/constants/colors';
-import { TIPO_CIERRE_LABELS, TipoCierreValue, type TipoCierre } from '@/features/events/types';
-
-const OPCIONES = Object.values(TipoCierreValue) as TipoCierre[];
+import { listarTiposCierre } from '@/features/catalogos/local/catalogos-local';
+import { useCatalogo } from '@/hooks/use-catalogo';
 
 type CompletarEventoSheetProps = {
   visible: boolean;
   /** Tipo de cierre ya elegido (para cambiarlo antes de enviar). */
-  inicial?: TipoCierre | null;
+  inicial?: number | null;
   onClose: () => void;
   /** Guarda el cierre en el dispositivo. Si lanza un error, se muestra y la hoja sigue abierta. */
-  onConfirm: (tipoCierre: TipoCierre) => Promise<void>;
+  onConfirm: (tipoCierreId: number) => Promise<void>;
 };
 
 /**
  * Hoja para elegir el tipo de cierre. El cierre se guarda en el dispositivo: el evento queda
- * "por enviar" y el agente lo envía después.
+ * "por enviar" y el agente lo envía después. Las opciones salen del catálogo del dispositivo.
  */
 export function CompletarEventoSheet({ visible, inicial = null, onClose, onConfirm }: CompletarEventoSheetProps) {
-  const [tipoCierre, setTipoCierre] = useState<TipoCierre | null>(inicial);
+  const [tipoCierre, setTipoCierre] = useState<number | null>(inicial);
+  // Solo mientras está abierta (cada tarjeta del listado tiene su hoja)
+  const opciones = useCatalogo(visible ? 'tipos-cierre' : null, listarTiposCierre);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,17 +61,21 @@ export function CompletarEventoSheet({ visible, inicial = null, onClose, onConfi
           <Text style={styles.subtitle}>Seleccione el tipo de cierre. Se guarda en el dispositivo y luego podrá enviar el evento.</Text>
 
           <View style={styles.options}>
-            {OPCIONES.map((opcion) => (
+            {opciones.cargando && <ActivityIndicator color={Palette.primary[500]} />}
+            {!opciones.cargando && opciones.items.length === 0 && (
+              <Text style={styles.error}>
+                {opciones.error ?? 'Los tipos de cierre aún no se han descargado. Conéctese a internet e intente de nuevo.'}
+              </Text>
+            )}
+            {opciones.items.map((opcion) => (
               <Pressable
-                key={opcion}
+                key={opcion.id}
                 accessibilityRole="radio"
-                accessibilityState={{ checked: tipoCierre === opcion }}
+                accessibilityState={{ checked: tipoCierre === opcion.id }}
                 disabled={isSubmitting}
-                style={[styles.option, tipoCierre === opcion && styles.optionSelected]}
-                onPress={() => setTipoCierre(opcion)}>
-                <Text style={[styles.optionText, tipoCierre === opcion && styles.optionTextSelected]}>
-                  {TIPO_CIERRE_LABELS[opcion]}
-                </Text>
+                style={[styles.option, tipoCierre === opcion.id && styles.optionSelected]}
+                onPress={() => setTipoCierre(opcion.id)}>
+                <Text style={[styles.optionText, tipoCierre === opcion.id && styles.optionTextSelected]}>{opcion.nombre}</Text>
               </Pressable>
             ))}
           </View>

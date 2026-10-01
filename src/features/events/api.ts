@@ -9,7 +9,6 @@ import type {
   PagedResult,
   RegistrarEventoRequest,
   RegistrarEventoResult,
-  TipoCierre,
 } from './types';
 
 /**
@@ -53,7 +52,7 @@ export function registrarEvento(token: string, request: RegistrarEventoRequest) 
 export function completarEvento(
   token: string,
   eventoId: number,
-  request: { tipoCierre: TipoCierre; fechaHoraCompletadoUtc?: string },
+  request: { tipoCierreId: number; fechaHoraCompletadoUtc?: string },
 ) {
   return apiRequest<void>(`/eventos/${eventoId}/completar`, { method: 'PATCH', token, body: request });
 }

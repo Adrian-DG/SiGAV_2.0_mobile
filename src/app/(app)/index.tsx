@@ -129,8 +129,8 @@ export default function HomeScreen() {
 
   const refetchAll = () => setRefreshNonce((n) => n + 1);
 
-  async function cerrar(item: EventoLocalListItem, tipoCierre: Parameters<typeof cerrarEventoLocal>[2]) {
-    await cerrarEventoLocal(db, item.localId, tipoCierre);
+  async function cerrar(item: EventoLocalListItem, tipoCierreId: number) {
+    await cerrarEventoLocal(db, item.localId, tipoCierreId);
     refetchAll();
   }
 
@@ -212,7 +212,7 @@ export default function HomeScreen() {
           <EventCard
             item={item}
             onEditar={() => router.push({ pathname: '/events/[id]', params: { id: String(item.localId) } })}
-            onCerrar={(tipoCierre) => cerrar(item, tipoCierre)}
+            onCerrar={(tipoCierreId) => cerrar(item, tipoCierreId)}
             onEnviar={() => enviar(item)}
           />
         )}

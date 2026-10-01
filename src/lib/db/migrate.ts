@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -18,6 +18,9 @@ const DATABASE_VERSION = 3;
  *   en EventoCiudadanoConfiguration).
  *
  * No se modela evento_evidencias: el formulario de campo todavía no captura fotos ni firmas.
+ *
+ * Desde la v4 los catálogos (cat_*) también viven aquí: se descargan de GET /api/catalogos/movil
+ * (features/catalogos/local/catalogos-local.ts) y el formulario se llena sin conexión.
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -47,7 +50,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
         fecha_hora_reporte_utc TEXT NOT NULL,
         fecha_hora_llegada_utc TEXT,
         fecha_hora_completado_utc TEXT,
-        -- TipoCierreEventoEnum; solo si el evento se envía ya completado.
+        -- Tipo de cierre (cat_tipos_cierre desde la v4); solo si el evento se envía ya completado.
         tipo_cierre INTEGER,
         -- Cola de sincronización: 0 pendiente de enviar, 1 ya confirmado por la API.
         synced INTEGER NOT NULL DEFAULT 0,
@@ -106,6 +109,38 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       ALTER TABLE evento_tipos ADD COLUMN categoria INTEGER;
 
       CREATE INDEX idx_eventos_sesion ON eventos(agente_id, unidad_id, synced, estado);
+    `);
+  }
+
+  if (currentVersion < 4) {
+    // v4: catálogos en el dispositivo, copia de los activos en la API. Se reemplazan completos en
+    // cada descarga (no se editan aquí), por eso no llevan IsActive ni auditoría.
+    //  - tipo_cierre pasa a ser un Id del catálogo cat_tipos_cierre (antes el enum
+    //    TipoCierreEventoEnum; el catálogo conserva los mismos Ids 1 a 7).
+    await db.execAsync(`
+      ALTER TABLE eventos RENAME COLUMN tipo_cierre TO tipo_cierre_id;
+
+      CREATE TABLE cat_provincias (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+      CREATE TABLE cat_municipios (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, provincia_id INTEGER NOT NULL);
+      -- categoria: CategoriaEventoEnum (1 Asistencia, 2 Accidente).
+      CREATE TABLE cat_tipos_evento (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, categoria INTEGER NOT NULL);
+      CREATE TABLE cat_tipos_cierre (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+      CREATE TABLE cat_nacionalidades (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+      CREATE TABLE cat_colores (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+      CREATE TABLE cat_tipos_vehiculo (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+      CREATE TABLE cat_marcas (id INTEGER PRIMARY KEY, nombre TEXT NOT NULL);
+      CREATE TABLE cat_modelos (
+        id INTEGER PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        marca_id INTEGER NOT NULL,
+        tipo_vehiculo_id INTEGER NOT NULL
+      );
+
+      CREATE INDEX idx_cat_municipios_provincia ON cat_municipios(provincia_id);
+      CREATE INDEX idx_cat_modelos_marca ON cat_modelos(marca_id, tipo_vehiculo_id);
+
+      -- Versión (hash que da la API) y fecha de la última descarga de los catálogos.
+      CREATE TABLE catalogos_meta (clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
     `);
   }
 

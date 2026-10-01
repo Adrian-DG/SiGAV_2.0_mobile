@@ -45,7 +45,7 @@ const url = env[config.variable];
 
 if (config.requerida && !url) {
   console.error(`\n✖ Falta ${config.variable} para el ambiente "${ambiente}".`);
-  console.error('  Agréguela en .env.local (vea .env.example).\n');
+  console.error('  Agréguela en .env.local (vea el README).\n');
   process.exit(1);
 }
 

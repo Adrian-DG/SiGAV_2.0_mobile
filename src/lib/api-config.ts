@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 /**
  * A qué API se conecta la app. Se elige al arrancar Metro (o en el perfil de EAS) con
- * EXPO_PUBLIC_API_ENV; ver `npm run start:local | start:tunnel | start:prod` y `.env.example`.
+ * EXPO_PUBLIC_API_ENV; ver `npm run start:local | start:tunnel | start:prod` y `.env.local` (README).
  *  - local:      la API corriendo en esta máquina (puerto HTTP de Presentation).
  *  - dev_tunnel: la API expuesta con un Dev Tunnel de Visual Studio (dispositivos fuera de la red).
  *  - production: la API publicada.

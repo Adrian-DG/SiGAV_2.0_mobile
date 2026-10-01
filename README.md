@@ -10,15 +10,15 @@ App de campo de Asistencia Vial para las unidades (Expo SDK 57 · React Native �
    npm install
    ```
 
-2. Copiar `.env.example` a `.env.local` y ajustar `EXPO_PUBLIC_API_URL` (incluye `/api`):
+2. Crear `.env.local` (ignorado por git) con la URL de cada ambiente — ver `src/lib/api-config.ts` para el detalle de cada variable:
 
-   | Dónde corre la app | URL |
-   |---|---|
-   | Web / iOS simulator en la misma máquina | `http://localhost:5282/api` |
-   | Emulador Android | `http://10.0.2.2:5282/api` |
-   | Dispositivo físico | `http://<IP-de-la-PC-en-la-LAN>:5282/api` |
+   ```
+   EXPO_PUBLIC_API_URL_LOCAL=http://<IP-de-la-PC-en-la-LAN>:5282/api
+   EXPO_PUBLIC_API_URL_DEV_TUNNEL=https://<id>-7148.use2.devtunnels.ms
+   EXPO_PUBLIC_API_URL_PRODUCTION=https://<api publicada>
+   ```
 
-   Para un dispositivo físico la API debe escuchar en la red local (no solo en `localhost`), y para la versión web la API debe permitir CORS desde el origen de Expo.
+   `EXPO_PUBLIC_API_URL_LOCAL` es opcional: sin valor se detecta sola (`localhost` en web, la IP que sirve Metro en emulador/dispositivo). Para un dispositivo físico la API debe escuchar en la red local (no solo en `localhost`), y para la versión web debe permitir CORS desde el origen de Expo.
 
 3. Iniciar:
 

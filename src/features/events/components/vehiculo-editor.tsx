@@ -14,6 +14,7 @@ import {
   listarTiposVehiculo,
 } from '@/features/catalogos/local/catalogos-local';
 import { buscarVehiculo } from '@/features/historico/api';
+import { ScannerSheet } from '@/features/scan/scanner-sheet';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { ApiError } from '@/lib/api-client';
 
@@ -50,6 +51,7 @@ export function VehiculoEditor({ token, titulo, value, contexto, onChange, onSav
   const [modeloManual, setModeloManual] = useState(!!value.modeloTexto);
   const [colorManual, setColorManual] = useState(!!value.colorTexto);
   const [intentoGuardar, setIntentoGuardar] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
 
   const prefijos = useCatalogo('prefijos-placa', listarPrefijosPlaca);
   const tiposVehiculo = useCatalogo('tipos-vehiculo', listarTiposVehiculo);
@@ -120,17 +122,30 @@ export function VehiculoEditor({ token, titulo, value, contexto, onChange, onSav
         maxLength={PLACA_MAX_LENGTH}
         errorText={errores.placa}
         rightAdornment={
-          <Button
-            label="Buscar"
-            variant="ghost"
-            loading={busqueda.estado === 'buscando'}
-            disabled={!puedeBuscarPlaca(value.placa)}
-            onPress={buscarPlaca}
-          />
+          <View style={styles.adornos}>
+            <Button label="Escanear" variant="ghost" onPress={() => setEscaneando(true)} />
+            <Button
+              label="Buscar"
+              variant="ghost"
+              loading={busqueda.estado === 'buscando'}
+              disabled={!puedeBuscarPlaca(value.placa)}
+              onPress={buscarPlaca}
+            />
+          </View>
         }
       />
       {!errores.placa && <MensajePlaca analisis={analisis} nombreTipo={nombreTipo} />}
       <EstadoBusqueda busqueda={busqueda} />
+
+      <ScannerSheet
+        visible={escaneando}
+        titulo="placa"
+        onClose={() => setEscaneando(false)}
+        onResult={(texto) => {
+          onChange(conTipoSugerido({ ...value, placa: formatPlaca(texto), origen: null }));
+          setBusqueda({ estado: 'idle' });
+        }}
+      />
 
       {!!value.placa && (
         <View style={styles.switchRow}>
@@ -273,6 +288,7 @@ function MensajePlaca({ analisis, nombreTipo }: { analisis: AnalisisPlaca; nombr
 const styles = StyleSheet.create({
   card: { gap: 12 },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
+  adornos: { flexDirection: 'row' },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },

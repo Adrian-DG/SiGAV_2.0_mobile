@@ -9,6 +9,7 @@ import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
 import { listarNacionalidades } from '@/features/catalogos/local/catalogos-local';
 import { buscarCiudadano } from '@/features/historico/api';
+import { ScannerSheet } from '@/features/scan/scanner-sheet';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { ApiError } from '@/lib/api-client';
 
@@ -61,6 +62,7 @@ type InvolucradoEditorProps = {
 export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, onChange, onSave, onCancel }: InvolucradoEditorProps) {
   const [busqueda, setBusqueda] = useState<Busqueda>({ estado: 'idle' });
   const [intentoGuardar, setIntentoGuardar] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
 
   const nacionalidades = useCatalogo('nacionalidades', listarNacionalidades);
 
@@ -132,16 +134,29 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
         maxLength={IDENTIFICACION_MAX_LENGTH + 2}
         errorText={errores.identificacion}
         rightAdornment={
-          <Button
-            label="Buscar"
-            variant="ghost"
-            loading={busqueda.estado === 'buscando'}
-            disabled={!puedeBuscarIdentificacion(value.identificacion)}
-            onPress={buscarPersona}
-          />
+          <View style={styles.adornos}>
+            <Button label="Escanear" variant="ghost" onPress={() => setEscaneando(true)} />
+            <Button
+              label="Buscar"
+              variant="ghost"
+              loading={busqueda.estado === 'buscando'}
+              disabled={!puedeBuscarIdentificacion(value.identificacion)}
+              onPress={buscarPersona}
+            />
+          </View>
         }
       />
       <EstadoBusqueda busqueda={busqueda} />
+
+      <ScannerSheet
+        visible={escaneando}
+        titulo="cédula"
+        onClose={() => setEscaneando(false)}
+        onResult={(texto) => {
+          onChange({ ...value, identificacion: formatIdentificacion(texto), origen: null });
+          setBusqueda({ estado: 'idle' });
+        }}
+      />
 
       <View style={styles.row}>
         <View style={styles.flex}>
@@ -184,6 +199,7 @@ const styles = StyleSheet.create({
   card: { gap: 12 },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
+  adornos: { flexDirection: 'row' },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
 });

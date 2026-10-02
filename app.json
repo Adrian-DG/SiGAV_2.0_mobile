@@ -48,6 +48,12 @@
         {
           "locationWhenInUsePermission": "SiGAV Móvil usa tu ubicación para registrar dónde ocurre cada evento atendido por la unidad."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SiGAV Móvil usa la cámara para escanear la cédula del ciudadano y la placa del vehículo."
+        }
       ]
     ],
     "experiments": {

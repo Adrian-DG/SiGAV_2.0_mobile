@@ -25,7 +25,8 @@ export class SinConexionError extends ApiError {
   }
 }
 
-type UnauthorizedHandler = () => void;
+/** Recibe el motivo que dio la API (p. ej. "La sesión expiró…" o "…fue cerrada"). */
+type UnauthorizedHandler = (message: string) => void;
 let unauthorizedHandler: UnauthorizedHandler | null = null;
 
 /**
@@ -108,14 +109,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const data = parseJson(text);
 
   if (!response.ok) {
-    // Solo si la petición llevaba token: un 401 del login (credenciales inválidas) no es una sesión vencida
-    if (response.status === 401 && token) unauthorizedHandler?.();
-
     const message =
       (typeof data?.message === 'string' && data.message) ||
       (response.status >= 500
         ? 'El servidor no está disponible en este momento. Intente de nuevo en unos minutos.'
         : `La solicitud falló con estado ${response.status}.`);
+
+    // Solo si la petición llevaba token: un 401 del login (credenciales inválidas) no es una sesión vencida
+    if (response.status === 401 && token) unauthorizedHandler?.(message);
+
     throw new ApiError(response.status, message, data?.errors ?? null);
   }
 

@@ -2,6 +2,8 @@ import { createContext, use, useEffect, useMemo, useState, type PropsWithChildre
 
 import { getSesionActual, loginMovil } from '@/features/auth/api';
 import { clearSession, persistSession, restoreSession, sesionDesdeToken, type Session } from '@/features/auth/session-store';
+import { cerrarSesionMovil } from '@/features/posicion/api';
+import { detenerSeguimiento, iniciarSeguimiento } from '@/features/posicion/seguimiento';
 import { setUnauthorizedHandler } from '@/lib/api-client';
 import { secureStorage } from '@/lib/storage';
 
@@ -41,13 +43,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // La API rechazó el token a mitad del turno: se cierra la sesión (el guard de rutas lleva al login)
   useEffect(
     () =>
-      setUnauthorizedHandler(() => {
+      setUnauthorizedHandler((mensaje) => {
         clearSession(secureStorage).catch(() => {});
-        setNotice(SESION_EXPIRADA);
+        setNotice(mensaje || SESION_EXPIRADA);
         setSession(null);
       }),
     [],
   );
+
+  // Mientras haya sesión la unidad envía su posición (mapa de unidades del front desk)
+  const token = session?.token;
+  useEffect(() => {
+    if (token) void iniciarSeguimiento(token);
+    else void detenerSeguimiento();
+  }, [token]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -63,6 +72,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setSession(nueva);
       },
       async signOut() {
+        await detenerSeguimiento();
+        // Avisa al servidor para que la unidad quede libre de inmediato. Sin conexión se sale
+        // igual: la unidad pasa a desconectada sola a los 15 min sin enviar su posición.
+        if (session) await cerrarSesionMovil(session.token).catch(() => {});
         await clearSession(secureStorage);
         setNotice(null);
         setSession(null);

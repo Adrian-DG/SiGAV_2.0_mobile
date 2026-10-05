@@ -5,6 +5,8 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { SplashScreenController } from '@/components/splash-screen-controller';
 import { AuthProvider, useSession } from '@/contexts/auth-context';
 import { migrateDbIfNeeded } from '@/lib/db/migrate';
+// Registra la tarea de ubicación en segundo plano al cargar la app (también cuando el sistema la relanza)
+import '@/features/posicion/seguimiento';
 
 export default function RootLayout() {
   return (

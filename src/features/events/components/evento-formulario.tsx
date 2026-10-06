@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/screen-header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Chip } from '@/components/ui/chip';
 import { IconButton } from '@/components/ui/icon-button';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
@@ -22,8 +21,9 @@ import {
   listarTiposEvento,
 } from '@/features/catalogos/local/catalogos-local';
 import { InvolucradoEditor } from '@/features/events/components/involucrado-editor';
+import { nombresTipos, TiposEventoSelector } from '@/features/events/components/tipos-evento-selector';
 import { VehiculoEditor } from '@/features/events/components/vehiculo-editor';
-import { nombrePersona, ROL_LABEL, VehiculoTarjeta } from '@/features/events/components/vehiculo-tarjeta';
+import { nombrePersona, ROL_LABEL, TiposAtendidos, VehiculoTarjeta } from '@/features/events/components/vehiculo-tarjeta';
 import {
   guardarInvolucrado as conInvolucrado,
   guardarVehiculo as conVehiculo,
@@ -36,7 +36,7 @@ import {
   quitarInvolucrado,
   quitarVehiculo,
   tieneConductor,
-  toggleTipoEvento,
+  tiposDelEvento,
   validarEvento,
   type EventoForm,
   type FormErrors,
@@ -44,7 +44,7 @@ import {
   type VehiculoForm,
 } from '@/features/events/form/evento-form';
 import type { TipoEventoInfo } from '@/features/events/local/eventos-local';
-import { CategoriaEventoValue, RolCiudadanoValue, type RolCiudadano } from '@/features/events/types';
+import { RolCiudadanoValue, type RolCiudadano } from '@/features/events/types';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { useUbicacionActual } from '@/hooks/use-ubicacion-actual';
 import { secureStorage } from '@/lib/storage';
@@ -113,8 +113,9 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
 
     setGuardando(true);
     try {
+      const ids = tiposDelEvento(formCompleto);
       const tiposInfo: TipoEventoInfo[] = tipos.items
-        .filter((t: TipoEventoItem) => formCompleto.tipoEventoIds.includes(t.id))
+        .filter((t: TipoEventoItem) => ids.includes(t.id))
         .map((t: TipoEventoItem) => ({ id: t.id, nombre: t.nombre, categoria: t.categoria }));
       await onGuardar(formCompleto, tiposInfo);
       await secureStorage
@@ -128,16 +129,27 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
     }
   }
 
-  function guardarEditor() {
+  /** `otro`: abre enseguida uno nuevo del mismo tipo (N vehículos o N personas seguidas). */
+  function guardarEditor(otro: boolean) {
     if (!editor) return;
     if (editor.tipo === 'vehiculo') {
       const vehiculo = editor.draft;
       setForm((f) => conVehiculo(f, vehiculo));
+      const hayCupo = form.vehiculos.length + (editor.nuevo ? 1 : 0) < MAX_VEHICULOS;
+      setEditor(otro && hayCupo ? { tipo: 'vehiculo', nuevo: true, draft: nuevoVehiculo(Crypto.randomUUID()) } : null);
     } else {
       const persona = editor.draft;
       setForm((f) => conInvolucrado(f, persona));
+      const hayCupo = form.involucrados.length + (editor.nuevo ? 1 : 0) < MAX_PERSONAS;
+      // Otra persona en el mismo vehículo: pasajero (el conductor ya está o era esta)
+      const rol =
+        persona.vehiculoKey && persona.rol === RolCiudadanoValue.Conductor ? RolCiudadanoValue.Pasajero : persona.rol;
+      setEditor(
+        otro && hayCupo
+          ? { tipo: 'persona', nuevo: true, draft: nuevoInvolucrado(Crypto.randomUUID(), rol, persona.vehiculoKey) }
+          : null,
+      );
     }
-    setEditor(null);
   }
 
   const agregarPersona = (rol: RolCiudadano, vehiculoKey: string | null = null) =>
@@ -151,8 +163,16 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
   };
 
   const sueltos = personasSinVehiculo(form);
+  const totalTipos = tiposDelEvento(form).length;
 
-  const tiposPorCategoria = (categoria: number) => tipos.items.filter((t: TipoEventoItem) => t.categoria === categoria);
+  /** Copiar los tipos de los otros vehículos al que se edita (el más reciente primero). */
+  const atajosVehiculo = (key: string) =>
+    form.vehiculos
+      .map((v, i) => ({ v, i }))
+      .filter(({ v }) => v.key !== key && v.tipoEventoIds.length > 0)
+      .reverse()
+      .slice(0, 2)
+      .map(({ v, i }) => ({ label: `Igual que vehículo ${i + 1}`, ids: v.tipoEventoIds }));
 
   const textoUbicacion = !capturarUbicacion
     ? ubicacion
@@ -232,41 +252,26 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
             />
           </Card>
 
-          {/* 3. Tipos de evento */}
-          <Card style={styles.card}>
-            <Text style={styles.sectionTitle}>Tipo de evento</Text>
-            {tipos.cargando && <Text style={styles.muted}>Cargando…</Text>}
+          {/* 3. Atendidos: cada vehículo y cada persona con sus propios tipos de evento */}
+          <View style={styles.resumen} accessibilityRole="summary">
+            <Text style={styles.resumenTitulo}>Atendidos en el lugar</Text>
+            <Text style={styles.resumenTexto}>
+              {form.vehiculos.length} {form.vehiculos.length === 1 ? 'vehículo' : 'vehículos'} · {form.involucrados.length}{' '}
+              {form.involucrados.length === 1 ? 'persona' : 'personas'} · {totalTipos} {totalTipos === 1 ? 'tipo' : 'tipos'} de evento
+            </Text>
+            {tipos.cargando && <Text style={styles.muted}>Cargando tipos de evento…</Text>}
             {!!tipos.error && <Text style={styles.error}>{tipos.error}</Text>}
-            {[
-              { categoria: CategoriaEventoValue.Asistencia, titulo: 'Asistencias' },
-              { categoria: CategoriaEventoValue.Accidente, titulo: 'Accidentes' },
-            ].map(({ categoria, titulo: tituloGrupo }) =>
-              tiposPorCategoria(categoria).length === 0 ? null : (
-                <View key={categoria} style={styles.chipGroup}>
-                  <Text style={styles.fieldLabel}>{tituloGrupo}</Text>
-                  <View style={styles.chips}>
-                    {tiposPorCategoria(categoria).map((t) => (
-                      <Chip
-                        key={t.id}
-                        label={t.nombre}
-                        selected={form.tipoEventoIds.includes(t.id)}
-                        onPress={() => setForm((f) => toggleTipoEvento(f, t.id))}
-                      />
-                    ))}
-                  </View>
-                </View>
-              ),
-            )}
-            {!!errors.tipos && <Text style={styles.error}>{errors.tipos}</Text>}
-          </Card>
+          </View>
 
-          {/* 4. Vehículos con sus ocupantes, y personas sin vehículo */}
           {editor?.tipo === 'vehiculo' && (
             <VehiculoEditor
+              key={editor.draft.key}
               token={token}
-              titulo={editor.nuevo ? 'Nuevo vehículo' : etiquetaVehiculo(editor.draft.key)}
+              titulo={editor.nuevo ? `Vehículo ${form.vehiculos.length + 1} (nuevo)` : etiquetaVehiculo(editor.draft.key)}
               value={editor.draft}
               contexto={form}
+              tipos={tipos.items}
+              atajosTipos={atajosVehiculo(editor.draft.key)}
               onChange={(draft) => setEditor((e) => (e?.tipo === 'vehiculo' ? { ...e, draft } : e))}
               onSave={guardarEditor}
               onCancel={() => setEditor(null)}
@@ -274,10 +279,12 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
           )}
           {editor?.tipo === 'persona' && (
             <InvolucradoEditor
+              key={editor.draft.key}
               token={token}
               value={editor.draft}
               contexto={form}
               etiquetaVehiculo={etiquetaVehiculo}
+              tipos={tipos.items}
               onChange={(draft) => setEditor((e) => (e?.tipo === 'persona' ? { ...e, draft } : e))}
               onSave={guardarEditor}
               onCancel={() => setEditor(null)}
@@ -289,7 +296,9 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
               <Card style={styles.card}>
                 <Text style={styles.sectionTitle}>Vehículos</Text>
                 {form.vehiculos.length === 0 && (
-                  <Text style={styles.muted}>Agregue cada vehículo involucrado y luego su conductor y pasajeros.</Text>
+                  <Text style={styles.muted}>
+                    Agregue cada vehículo atendido con lo que se le hizo (neumático, calentamiento…) y luego su conductor y pasajeros.
+                  </Text>
                 )}
                 {form.vehiculos.map((v, i) => (
                   <VehiculoTarjeta
@@ -297,6 +306,7 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
                     indice={i + 1}
                     vehiculo={v}
                     ocupantes={ocupantesDe(form, v.key)}
+                    tipos={tipos.items}
                     error={errors[`vehiculo.${v.key}`]}
                     erroresPersona={(key) => errors[`involucrado.${key}`]}
                     puedeAgregarConductor={!tieneConductor(form, v.key)}
@@ -318,9 +328,9 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
               </Card>
 
               <Card style={styles.card}>
-                <Text style={styles.sectionTitle}>Peatones</Text>
+                <Text style={styles.sectionTitle}>Personas sin vehículo</Text>
                 {sueltos.length === 0 && (
-                  <Text style={styles.muted}>Personas involucradas que no iban en un vehículo.</Text>
+                  <Text style={styles.muted}>Peatones y otras personas atendidas que no iban en un vehículo.</Text>
                 )}
                 {sueltos.map((inv) => (
                   <View key={inv.key} style={styles.involucrado}>
@@ -332,6 +342,7 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
                       <Text style={styles.involucradoTitulo}>
                         {ROL_LABEL[inv.rol]}: {nombrePersona(inv)}
                       </Text>
+                      <TiposAtendidos nombres={nombresTipos(tipos.items, inv.tipoEventoIds)} vacio="Sin tipos de evento" />
                       {!!errors[`involucrado.${inv.key}`] && <Text style={styles.error}>{errors[`involucrado.${inv.key}`]}</Text>}
                     </Pressable>
                     <IconButton
@@ -345,6 +356,21 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
                 {form.involucrados.length < MAX_PERSONAS && (
                   <Button label="+ Agregar persona" variant="secondary" onPress={() => agregarPersona(RolCiudadanoValue.Peaton)} />
                 )}
+              </Card>
+
+              <Card style={styles.card}>
+                <TiposEventoSelector
+                  tipos={tipos.items}
+                  label={
+                    form.vehiculos.length + form.involucrados.length > 0
+                      ? 'Otros tipos atendidos en el lugar (opcional)'
+                      : 'Tipos atendidos en el lugar'
+                  }
+                  ayuda="Solo lo que no corresponde a un vehículo ni a una persona (p. ej. remoción de un obstáculo en la vía)."
+                  value={form.tipoEventoIds}
+                  onChange={(tipoEventoIds) => setForm((f) => ({ ...f, tipoEventoIds }))}
+                  errorText={errors.tipos}
+                />
               </Card>
             </>
           )}
@@ -403,8 +429,9 @@ const styles = StyleSheet.create({
   dato: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   datoLabel: { fontSize: 13, color: Palette.neutral[600], fontWeight: '600' },
   datoValue: { flexShrink: 1, fontSize: 13, color: Palette.neutral[900], textAlign: 'right' },
-  chipGroup: { gap: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  resumen: { gap: 2, paddingHorizontal: 4 },
+  resumenTitulo: { fontSize: 17, fontWeight: '800', color: Palette.neutral[900] },
+  resumenTexto: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
   involucrado: {
     flexDirection: 'row',
     alignItems: 'center',

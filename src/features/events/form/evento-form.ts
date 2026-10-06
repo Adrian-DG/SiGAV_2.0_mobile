@@ -3,9 +3,14 @@
  *
  * Flujo: el agente encuentra el evento durante su patrullaje. Coordenadas y hora de llegada se
  * toman solas al abrir el formulario; unidad, agente, tramo y canal ("en campo") los pone la API a
- * partir de la sesión. El agente indica municipio, tipos de evento, los vehículos involucrados y
- * las personas (cada una asociada al vehículo en que iba, o sin vehículo si es un peatón),
- * autocompletando por cédula y por placa cuando ya se conocen.
+ * partir de la sesión. El agente indica municipio, los vehículos involucrados y las personas
+ * (cada una asociada al vehículo en que iba, o sin vehículo si es un peatón), autocompletando por
+ * cédula y por placa cuando ya se conocen.
+ *
+ * En un mismo lugar se atienden N vehículos y N personas, y cada uno con sus propios tipos de
+ * evento (p. ej. un vehículo con Neumático y Calentamiento, otro con Combustible, un peatón con
+ * Seguridad). Los tipos del evento son la unión de todos ellos más los "otros tipos" del lugar,
+ * que no corresponden a nadie en particular (p. ej. remoción de un obstáculo).
  */
 import type { PrefijoPlacaItem } from '@/features/catalogos/api';
 import type { CiudadanoConocido, OrigenDato, VehiculoConocido } from '@/features/historico/api';
@@ -43,6 +48,8 @@ export type VehiculoForm = {
   colorId: number | null;
   colorTexto: string;
   origen: OrigenDato | null;
+  /** Tipos de evento atendidos a este vehículo. */
+  tipoEventoIds: number[];
 };
 
 export type InvolucradoForm = {
@@ -57,6 +64,8 @@ export type InvolucradoForm = {
   origen: OrigenDato | null;
   /** `key` del vehículo del evento en que iba; null = sin vehículo. */
   vehiculoKey: string | null;
+  /** Tipos de evento atendidos a esta persona. Opcional si iba en un vehículo (comparte los de él). */
+  tipoEventoIds: number[];
 };
 
 export type EventoForm = {
@@ -66,6 +75,10 @@ export type EventoForm = {
   ubicacion: Ubicacion | null;
   provinciaId: number | null;
   municipioId: number | null;
+  /**
+   * Otros tipos atendidos en el lugar, sin vehículo ni persona asociados. Los tipos del evento son
+   * estos más los de cada vehículo y persona (`tiposDelEvento`).
+   */
   tipoEventoIds: number[];
   direccion: string;
   comentario: string;
@@ -117,6 +130,7 @@ export function nuevoVehiculo(key: string): VehiculoForm {
     colorId: null,
     colorTexto: '',
     origen: null,
+    tipoEventoIds: [],
   };
 }
 
@@ -137,6 +151,7 @@ export function nuevoInvolucrado(
     nacionalidadId: null,
     origen: null,
     vehiculoKey: rolAdmiteVehiculo(rol) ? vehiculoKey : null,
+    tipoEventoIds: [],
   };
 }
 
@@ -145,15 +160,22 @@ export function cambiarRol(inv: InvolucradoForm, rol: RolCiudadano): Involucrado
   return { ...inv, rol, vehiculoKey: rolAdmiteVehiculo(rol) ? inv.vehiculoKey : null };
 }
 
-export function toggleTipoEvento(form: EventoForm, tipoEventoId: number): EventoForm {
-  const seleccionado = form.tipoEventoIds.includes(tipoEventoId);
-  return {
-    ...form,
-    tipoEventoIds: seleccionado
-      ? form.tipoEventoIds.filter((id) => id !== tipoEventoId)
-      : [...form.tipoEventoIds, tipoEventoId],
-  };
+/** Marca o desmarca un tipo en una lista de tipos (del lugar, de un vehículo o de una persona). */
+export const toggleTipo = (ids: number[], tipoEventoId: number): number[] =>
+  ids.includes(tipoEventoId) ? ids.filter((id) => id !== tipoEventoId) : [...ids, tipoEventoId];
+
+/** Todos los tipos del evento, sin repetir: los del lugar y los de cada vehículo y persona. */
+export function tiposDelEvento(form: Pick<EventoForm, 'tipoEventoIds' | 'vehiculos' | 'involucrados'>): number[] {
+  const ids = [
+    ...form.tipoEventoIds,
+    ...form.vehiculos.flatMap((v) => v.tipoEventoIds),
+    ...form.involucrados.flatMap((i) => i.tipoEventoIds),
+  ];
+  return [...new Set(ids)];
 }
+
+/** Persona sin vehículo propio que no comparte los tipos de ninguno: debe tener los suyos. */
+export const requiereTiposPropios = (inv: InvolucradoForm) => !inv.vehiculoKey;
 
 // ------------------------------------------------------------------ Vehículos y personas
 
@@ -278,6 +300,7 @@ export function validarVehiculo(v: VehiculoForm, contexto: ContextoEvento, prefi
   const placa = formatPlaca(v.placa);
 
   if (!vehiculoTieneDatos(v)) errors.vehiculo = 'Registre al menos un dato del vehículo (placa, tipo, marca, modelo o color).';
+  if (v.tipoEventoIds.length === 0) errors.tipos = 'Seleccione qué se le atendió al vehículo.';
 
   const analisis = analizarPlaca(placa, v.placaNoEstandar, v.tipoVehiculoId, prefijos);
   if (placaBloquea(analisis) && analisis.estado === 'formato_invalido')
@@ -310,6 +333,9 @@ export function validarInvolucrado(inv: InvolucradoForm, contexto: ContextoEvent
         : 'Indique en qué vehículo iba.';
   }
 
+  if (requiereTiposPropios(inv) && inv.tipoEventoIds.length === 0)
+    errors.tipos = 'Seleccione qué se le atendió a la persona.';
+
   return errors;
 }
 
@@ -319,7 +345,8 @@ export function validarEvento(form: EventoForm, prefijos: PrefijoPlacaItem[] = [
 
   if (!form.ubicacion) errors.ubicacion = 'Aún no se ha obtenido la ubicación del evento.';
   if (!form.municipioId) errors.municipio = 'Seleccione el municipio.';
-  if (form.tipoEventoIds.length === 0) errors.tipos = 'Seleccione al menos un tipo de evento.';
+  if (tiposDelEvento(form).length === 0)
+    errors.tipos = 'Agregue los vehículos o personas atendidos con sus tipos de evento, o indique otro tipo atendido en el lugar.';
   if (form.vehiculos.length > MAX_VEHICULOS) errors.vehiculos = `No se pueden registrar más de ${MAX_VEHICULOS} vehículos.`;
   if (form.involucrados.length > MAX_PERSONAS) errors.personas = `No se pueden registrar más de ${MAX_PERSONAS} personas.`;
 
@@ -348,6 +375,7 @@ function toVehiculoRequest(v: VehiculoForm): VehiculoEventoRequest {
     marcaTexto: v.marcaId ? null : textoONull(v.marcaTexto),
     modeloTexto: v.modeloId ? null : textoONull(v.modeloTexto),
     colorTexto: v.colorId ? null : textoONull(v.colorTexto),
+    tipoEventoIds: v.tipoEventoIds,
   };
 }
 
@@ -361,6 +389,7 @@ function toCiudadanoRequest(inv: InvolucradoForm): CiudadanoEventoRequest {
     telefono: textoONull(inv.telefono),
     nacionalidadId: inv.nacionalidadId,
     vehiculoClave: rolAdmiteVehiculo(inv.rol) ? inv.vehiculoKey : null,
+    tipoEventoIds: inv.tipoEventoIds,
   };
 }
 
@@ -376,7 +405,8 @@ export function toRegistrarEventoRequest(form: EventoForm): RegistrarEventoReque
     latitud: form.ubicacion.latitud,
     longitud: form.ubicacion.longitud,
     municipioId: form.municipioId,
-    tipoEventoIds: form.tipoEventoIds,
+    // La API exige que los tipos de cada vehículo y persona estén entre los del evento
+    tipoEventoIds: tiposDelEvento(form),
     fechaHoraReporteUtc: form.fechaHoraLlegada,
     fechaHoraLlegadaUtc: form.fechaHoraLlegada,
     direccion: textoONull(form.direccion),

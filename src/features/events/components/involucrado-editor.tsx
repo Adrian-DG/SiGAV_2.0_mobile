@@ -7,6 +7,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
+import type { TipoEventoItem } from '@/features/catalogos/api';
 import { listarNacionalidades } from '@/features/catalogos/local/catalogos-local';
 import { buscarCiudadano } from '@/features/historico/api';
 import { useCatalogo } from '@/hooks/use-catalogo';
@@ -19,6 +20,7 @@ import {
   IDENTIFICACION_MAX_LENGTH,
   puedeBuscarIdentificacion,
   rolAdmiteVehiculo,
+  requiereTiposPropios,
   rolRequiereVehiculo,
   validarInvolucrado,
   type ContextoEvento,
@@ -26,6 +28,7 @@ import {
 } from '../form/evento-form';
 import { RolCiudadanoValue, SexoValue, type RolCiudadano, type Sexo } from '../types';
 import { EstadoBusqueda, fechaCorta, type Busqueda } from './estado-busqueda';
+import { TiposEventoSelector } from './tipos-evento-selector';
 
 /** Roles que el agente puede asignar en campo. */
 const ROL_OPTIONS: { label: string; value: RolCiudadano }[] = [
@@ -53,12 +56,23 @@ type InvolucradoEditorProps = {
   contexto: ContextoEvento;
   /** Nombre de cada vehículo para elegirlo ("Vehículo 1 · A123456"). */
   etiquetaVehiculo: (vehiculoKey: string) => string;
+  tipos: TipoEventoItem[];
   onChange: (value: InvolucradoForm) => void;
-  onSave: () => void;
+  /** `otro`: al guardar, abrir enseguida otra persona (en el mismo vehículo, si iba en uno). */
+  onSave: (otro: boolean) => void;
   onCancel: () => void;
 };
 
-export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, onChange, onSave, onCancel }: InvolucradoEditorProps) {
+export function InvolucradoEditor({
+  token,
+  value,
+  contexto,
+  etiquetaVehiculo,
+  tipos,
+  onChange,
+  onSave,
+  onCancel,
+}: InvolucradoEditorProps) {
   const [busqueda, setBusqueda] = useState<Busqueda>({ estado: 'idle' });
   const [intentoGuardar, setIntentoGuardar] = useState(false);
 
@@ -71,6 +85,7 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
   // SelectField trabaja con Ids numéricos: posición del vehículo en el evento (1, 2, ...)
   const opcionesVehiculo = contexto.vehiculos.map((v, i) => ({ id: i + 1, nombre: etiquetaVehiculo(v.key) }));
   const vehiculoSeleccionado = value.vehiculoKey ? contexto.vehiculos.findIndex((v) => v.key === value.vehiculoKey) + 1 || null : null;
+  const vehiculo = contexto.vehiculos.find((v) => v.key === value.vehiculoKey);
 
   async function buscarPersona() {
     if (!puedeBuscarIdentificacion(value.identificacion)) return;
@@ -92,9 +107,9 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
     }
   }
 
-  function guardar() {
+  function guardar(otro: boolean) {
     setIntentoGuardar(true);
-    if (Object.keys(validarInvolucrado(value, contexto)).length === 0) onSave();
+    if (Object.keys(validarInvolucrado(value, contexto)).length === 0) onSave(otro);
   }
 
   return (
@@ -168,12 +183,24 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
         onChange={(nacionalidadId) => onChange({ ...value, nacionalidadId })}
       />
 
+      <View style={styles.separador} />
+      <TiposEventoSelector
+        tipos={tipos}
+        label={requiereTiposPropios(value) ? '¿Qué se le atendió?' : '¿Qué se le atendió? (opcional)'}
+        ayuda={requiereTiposPropios(value) ? undefined : 'Si no marca nada, comparte lo atendido al vehículo en que iba.'}
+        value={value.tipoEventoIds}
+        onChange={(tipoEventoIds) => onChange({ ...value, tipoEventoIds })}
+        atajos={vehiculo ? [{ label: `Igual que ${etiquetaVehiculo(vehiculo.key).toLowerCase()}`, ids: vehiculo.tipoEventoIds }] : []}
+        errorText={errores.tipos}
+      />
+
+      <Button label="Guardar persona" onPress={() => guardar(false)} />
       <View style={styles.row}>
         <View style={styles.flex}>
           <Button label="Cancelar" variant="ghost" onPress={onCancel} />
         </View>
         <View style={styles.flex}>
-          <Button label="Guardar persona" onPress={guardar} />
+          <Button label="Guardar y agregar otra" variant="secondary" onPress={() => guardar(true)} />
         </View>
       </View>
     </Card>
@@ -186,4 +213,5 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
+  separador: { height: 1, backgroundColor: Palette.neutral[200] },
 });

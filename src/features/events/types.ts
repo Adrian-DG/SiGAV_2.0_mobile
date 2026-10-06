@@ -76,6 +76,8 @@ export type VehiculoEventoRequest = {
   marcaTexto: string | null;
   modeloTexto: string | null;
   colorTexto: string | null;
+  /** Tipos atendidos a este vehículo, de entre los `tipoEventoIds` del evento. */
+  tipoEventoIds: number[];
 };
 
 /** Mirrors CiudadanoEventoRequest. */
@@ -89,6 +91,8 @@ export type CiudadanoEventoRequest = {
   nacionalidadId: number | null;
   /** Clave del vehículo en que iba (null = sin vehículo). */
   vehiculoClave: string | null;
+  /** Tipos atendidos a esta persona, de entre los `tipoEventoIds` del evento. */
+  tipoEventoIds: number[];
 };
 
 /**
@@ -100,6 +104,7 @@ export type RegistrarEventoRequest = {
   latitud: number;
   longitud: number;
   municipioId: number;
+  /** Todos los tipos del evento: incluyen los de cada vehículo y persona. */
   tipoEventoIds: number[];
   fechaHoraReporteUtc: string;
   fechaHoraLlegadaUtc: string;

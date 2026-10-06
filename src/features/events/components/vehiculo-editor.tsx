@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
+import type { TipoEventoItem } from '@/features/catalogos/api';
 import {
   listarColores,
   listarMarcas,
@@ -28,6 +29,7 @@ import {
 } from '../form/evento-form';
 import { analizarPlaca, type AnalisisPlaca } from '../form/placa';
 import { EstadoBusqueda, fechaCorta, type Busqueda } from './estado-busqueda';
+import { TiposEventoSelector, type AtajoTipos } from './tipos-evento-selector';
 
 type VehiculoEditorProps = {
   token: string;
@@ -35,15 +37,19 @@ type VehiculoEditorProps = {
   value: VehiculoForm;
   /** Vehículos y personas del evento (para no repetir la placa). */
   contexto: ContextoEvento;
+  tipos: TipoEventoItem[];
+  /** Copiar los tipos de otro vehículo del evento. */
+  atajosTipos?: AtajoTipos[];
   onChange: (value: VehiculoForm) => void;
-  onSave: () => void;
+  /** `otro`: al guardar, abrir enseguida un vehículo nuevo. */
+  onSave: (otro: boolean) => void;
   onCancel: () => void;
 };
 
 /** "Desconocido" no contradice ningún prefijo de placa. */
 const esComodin = (nombre: string) => /desconocid/i.test(nombre);
 
-export function VehiculoEditor({ token, titulo, value, contexto, onChange, onSave, onCancel }: VehiculoEditorProps) {
+export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTipos, onChange, onSave, onCancel }: VehiculoEditorProps) {
   const [busqueda, setBusqueda] = useState<Busqueda>({ estado: 'idle' });
   // El agente eligió "no está en la lista": se muestra el campo de texto libre
   const [marcaManual, setMarcaManual] = useState(!!value.marcaTexto);
@@ -96,9 +102,9 @@ export function VehiculoEditor({ token, titulo, value, contexto, onChange, onSav
     }
   }
 
-  function guardar() {
+  function guardar(otro: boolean) {
     setIntentoGuardar(true);
-    if (Object.keys(validarVehiculo(value, contexto, prefijos.items)).length === 0) onSave();
+    if (Object.keys(validarVehiculo(value, contexto, prefijos.items)).length === 0) onSave(otro);
   }
 
   return (
@@ -234,12 +240,23 @@ export function VehiculoEditor({ token, titulo, value, contexto, onChange, onSav
       )}
       {!!errores.vehiculo && <Text style={styles.error}>{errores.vehiculo}</Text>}
 
+      <View style={styles.separador} />
+      <TiposEventoSelector
+        tipos={tipos}
+        label="¿Qué se le atendió?"
+        value={value.tipoEventoIds}
+        onChange={(tipoEventoIds) => set({ tipoEventoIds })}
+        atajos={atajosTipos}
+        errorText={errores.tipos}
+      />
+
+      <Button label="Guardar vehículo" onPress={() => guardar(false)} />
       <View style={styles.row}>
         <View style={styles.flex}>
           <Button label="Cancelar" variant="ghost" onPress={onCancel} />
         </View>
         <View style={styles.flex}>
-          <Button label="Guardar vehículo" onPress={guardar} />
+          <Button label="Guardar y agregar otro" variant="secondary" onPress={() => guardar(true)} />
         </View>
       </View>
     </Card>
@@ -275,6 +292,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
+  separador: { height: 1, backgroundColor: Palette.neutral[200] },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   switchLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: Palette.neutral[700] },
   mensaje: { fontSize: 13, fontWeight: '600', marginTop: -4, color: Palette.neutral[700] },

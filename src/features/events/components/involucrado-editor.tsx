@@ -16,6 +16,7 @@ import { ApiError } from '@/lib/api-client';
 import {
   aplicarCiudadanoConocido,
   cambiarRol,
+  formatEdad,
   formatIdentificacion,
   IDENTIFICACION_MAX_LENGTH,
   puedeBuscarIdentificacion,
@@ -168,13 +169,28 @@ export function InvolucradoEditor({
       </View>
       <Text style={styles.fieldLabel}>Sexo</Text>
       <SegmentedControl options={SEXO_OPTIONS} value={value.sexo} onChange={(sexo) => onChange({ ...value, sexo })} />
-      <TextField
-        label="Teléfono"
-        placeholder="809-000-0000"
-        keyboardType="phone-pad"
-        value={value.telefono}
-        onChangeText={(telefono) => onChange({ ...value, telefono })}
-      />
+      <View style={styles.row}>
+        <View style={styles.edad}>
+          <TextField
+            label="Edad"
+            placeholder="Años"
+            keyboardType="number-pad"
+            maxLength={3}
+            value={value.edad}
+            onChangeText={(edad) => onChange({ ...value, edad: formatEdad(edad) })}
+            errorText={errores.edad}
+          />
+        </View>
+        <View style={styles.flex}>
+          <TextField
+            label="Teléfono"
+            placeholder="809-000-0000"
+            keyboardType="phone-pad"
+            value={value.telefono}
+            onChangeText={(telefono) => onChange({ ...value, telefono })}
+          />
+        </View>
+      </View>
       <SelectField
         label="Nacionalidad"
         options={nacionalidades.items}
@@ -213,5 +229,6 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
+  edad: { width: 96 },
   separador: { height: 1, backgroundColor: Palette.neutral[200] },
 });

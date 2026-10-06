@@ -87,6 +87,8 @@ export type CiudadanoEventoRequest = {
   nombre: string | null;
   apellido: string | null;
   sexo: Sexo;
+  /** Años al momento del evento. */
+  edad: number | null;
   telefono: string | null;
   nacionalidadId: number | null;
   /** Clave del vehículo en que iba (null = sin vehículo). */

@@ -3,6 +3,7 @@ import { StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Chip } from '@/components/ui/chip';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
@@ -27,7 +28,7 @@ import {
   type ContextoEvento,
   type VehiculoForm,
 } from '../form/evento-form';
-import { analizarPlaca, type AnalisisPlaca } from '../form/placa';
+import { analizarPlaca, prefijoPorIniciales, tipoPorPlaca, tipoTrasCambiarPlaca, type AnalisisPlaca } from '../form/placa';
 import { EstadoBusqueda, fechaCorta, type Busqueda } from './estado-busqueda';
 import { TiposEventoSelector, type AtajoTipos } from './tipos-evento-selector';
 
@@ -71,12 +72,15 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
 
   const nombreTipo = (id: number) => tiposVehiculo.items.find((t) => t.id === id)?.nombre ?? `#${id}`;
 
-  /** Con la placa ya reconocida, si el prefijo corresponde a un solo tipo y aún no hay tipo, se sugiere. */
-  function conTipoSugerido(vehiculo: VehiculoForm): VehiculoForm {
-    if (vehiculo.tipoVehiculoId) return vehiculo;
-    const a = analizarPlaca(vehiculo.placa, vehiculo.placaNoEstandar, null, prefijos.items, comodines);
-    return a.estado === 'valida' && a.tiposSugeridos.length === 1 ? { ...vehiculo, tipoVehiculoId: a.tiposSugeridos[0] } : vehiculo;
+  /** Cambia la placa y, si el agente no eligió el tipo a mano, el tipo según las iniciales (A → Carro). */
+  function cambiarPlaca(cambios: Pick<VehiculoForm, 'placa' | 'placaNoEstandar'>) {
+    const tipoVehiculoId = tipoTrasCambiarPlaca(value, cambios.placa, cambios.placaNoEstandar, prefijos.items);
+    onChange({ ...value, ...cambios, tipoVehiculoId, origen: cambios.placa !== value.placa ? null : value.origen });
   }
+
+  // Iniciales con varios tipos posibles (G → Jeep o Jeepeta): se ofrecen para elegir con un toque
+  const prefijo = value.placaNoEstandar ? null : prefijoPorIniciales(value.placa, prefijos.items);
+  const tiposDePlaca = (prefijo?.tipoVehiculoIds ?? []).filter((id) => tiposVehiculo.items.some((t) => t.id === id));
 
   async function buscarPlaca() {
     if (!puedeBuscarPlaca(value.placa)) return;
@@ -84,7 +88,11 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
     try {
       const conocido = await buscarVehiculo(token, value.placa);
       if (conocido) {
-        const vehiculo = conTipoSugerido(aplicarVehiculoConocido(value, conocido));
+        // El histórico manda sobre el tipo que la placa eligió sola (no sobre uno elegido a mano)
+        const tipoAutomatico = !value.placaNoEstandar && value.tipoVehiculoId === tipoPorPlaca(value.placa, prefijos.items);
+        const base = tipoAutomatico ? { ...value, tipoVehiculoId: null } : value;
+        const completado = aplicarVehiculoConocido(base, conocido);
+        const vehiculo = completado.tipoVehiculoId ? completado : { ...completado, tipoVehiculoId: value.tipoVehiculoId };
         onChange(vehiculo);
         setMarcaManual(!vehiculo.marcaId && !!vehiculo.marcaTexto);
         setModeloManual(!vehiculo.modeloId && !!vehiculo.modeloTexto);
@@ -116,7 +124,7 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
         placeholder="A123456"
         value={value.placa}
         onChangeText={(text) => {
-          onChange(conTipoSugerido({ ...value, placa: formatPlaca(text), origen: null }));
+          cambiarPlaca({ placa: formatPlaca(text), placaNoEstandar: value.placaNoEstandar });
           setBusqueda({ estado: 'idle' });
         }}
         onBlur={buscarPlaca}
@@ -144,11 +152,21 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
           <Switch
             accessibilityLabel="Placa extranjera, temporal o ilegible"
             value={value.placaNoEstandar}
-            onValueChange={(placaNoEstandar) => set({ placaNoEstandar })}
+            onValueChange={(placaNoEstandar) => cambiarPlaca({ placa: value.placa, placaNoEstandar })}
           />
         </View>
       )}
 
+      {tiposDePlaca.length > 1 && (
+        <View style={styles.sugeridos}>
+          <Text style={styles.switchLabel}>Según la placa {prefijo?.prefijo}:</Text>
+          <View style={styles.chips}>
+            {tiposDePlaca.map((id) => (
+              <Chip key={id} label={nombreTipo(id)} selected={value.tipoVehiculoId === id} onPress={() => set({ tipoVehiculoId: id })} />
+            ))}
+          </View>
+        </View>
+      )}
       <SelectField
         label="Tipo de vehículo"
         options={tiposVehiculo.items}
@@ -293,6 +311,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
   separador: { height: 1, backgroundColor: Palette.neutral[200] },
+  sugeridos: { gap: 6 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   switchLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: Palette.neutral[700] },
   mensaje: { fontSize: 13, fontWeight: '600', marginTop: -4, color: Palette.neutral[700] },

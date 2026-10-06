@@ -116,6 +116,8 @@ type CiudadanoRow = {
   nombre: string | null;
   apellido: string | null;
   sexo: number;
+  /** Años (v7). */
+  edad: number | null;
   telefono: string | null;
   nacionalidad_id: number | null;
   vehiculo_id: number | null;
@@ -261,8 +263,8 @@ export async function guardarEventoLocal(
     for (const c of request.ciudadanos) {
       await db.runAsync(
         `INSERT INTO evento_ciudadanos (evento_id, rol, identificacion, nombre, apellido, sexo, telefono, nacionalidad_id, vehiculo_id,
-           tipo_evento_ids)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           tipo_evento_ids, edad)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         c.rol,
         c.identificacion,
@@ -273,6 +275,7 @@ export async function guardarEventoLocal(
         c.nacionalidadId,
         c.vehiculoClave ? (vehiculoIdPorClave.get(c.vehiculoClave) ?? null) : null,
         JSON.stringify(c.tipoEventoIds),
+        c.edad,
       );
     }
   });
@@ -463,6 +466,7 @@ function aInvolucrado(c: CiudadanoRow, vehiculoKey: string | null): InvolucradoF
     nombre: c.nombre ?? '',
     apellido: c.apellido ?? '',
     sexo: (c.sexo as Sexo) ?? SexoValue.NoIndicado,
+    edad: c.edad != null ? String(c.edad) : '',
     telefono: c.telefono ?? '',
     nacionalidadId: c.nacionalidad_id,
     origen: null,

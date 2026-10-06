@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 7;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -27,6 +27,8 @@ const DATABASE_VERSION = 6;
  *
  * Desde la v6 cada vehículo y persona guarda sus propios tipos de evento (espejo de
  * evento_vehiculo_tipo_evento y evento_ciudadano_tipo_evento); evento_tipos sigue siendo la unión.
+ *
+ * Desde la v7 cada persona guarda su edad (DatosPersona.Edad).
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -233,6 +235,11 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       ALTER TABLE evento_vehiculos ADD COLUMN tipo_evento_ids TEXT NOT NULL DEFAULT '[]';
       ALTER TABLE evento_ciudadanos ADD COLUMN tipo_evento_ids TEXT NOT NULL DEFAULT '[]';
     `);
+  }
+
+  if (currentVersion < 7) {
+    // v7: edad de la persona en años (NULL = no indicada).
+    await db.execAsync('ALTER TABLE evento_ciudadanos ADD COLUMN edad INTEGER');
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

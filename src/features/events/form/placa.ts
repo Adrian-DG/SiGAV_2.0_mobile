@@ -73,5 +73,42 @@ export function analizarPlaca(
   return { estado: 'valida', prefijo, tiposSugeridos, tipoCompatible };
 }
 
+/**
+ * Prefijo por las iniciales, sin exigir el formato completo: reconoce la placa mientras se escribe
+ * (con "G1" ya se sabe que es un jeep). Con prefijos que se solapan (O y OE) gana el más largo.
+ */
+export function prefijoPorIniciales(placa: string, prefijos: PrefijoPlacaItem[]): PrefijoPlacaItem | null {
+  const normalizada = normalizar(placa);
+  if (!normalizada) return null;
+  return prefijos.filter((p) => normalizada.startsWith(p.prefijo)).sort((a, b) => b.prefijo.length - a.prefijo.length)[0] ?? null;
+}
+
+/** Tipos de vehículo que corresponden a las iniciales de la placa (vacío = cualquiera o no reconocida). */
+export const tiposPorPlaca = (placa: string, prefijos: PrefijoPlacaItem[]): number[] =>
+  prefijoPorIniciales(placa, prefijos)?.tipoVehiculoIds ?? [];
+
+/** El tipo que se elige solo: cuando las iniciales corresponden a un único tipo (A → Carro, K → Motor). */
+export function tipoPorPlaca(placa: string, prefijos: PrefijoPlacaItem[]): number | null {
+  const tipos = tiposPorPlaca(placa, prefijos);
+  return tipos.length === 1 ? tipos[0] : null;
+}
+
+/**
+ * Tipo de vehículo tras cambiar la placa. Si el agente no lo eligió a mano (vacío, o el que la placa
+ * anterior puso solo), pasa a ser el que corresponde a las nuevas iniciales (o vacío si son varios).
+ * Una placa no estándar no elige tipo.
+ */
+export function tipoTrasCambiarPlaca(
+  anterior: { placa: string; placaNoEstandar: boolean; tipoVehiculoId: number | null },
+  placa: string,
+  placaNoEstandar: boolean,
+  prefijos: PrefijoPlacaItem[],
+): number | null {
+  const autoAnterior = anterior.placaNoEstandar ? null : tipoPorPlaca(anterior.placa, prefijos);
+  const elegidoAMano = anterior.tipoVehiculoId != null && anterior.tipoVehiculoId !== autoAnterior;
+  if (elegidoAMano) return anterior.tipoVehiculoId;
+  return placaNoEstandar ? null : tipoPorPlaca(placa, prefijos);
+}
+
 /** Solo el formato bloquea el guardado; el tipo incompatible es una advertencia. */
 export const placaBloquea = (analisis: AnalisisPlaca) => analisis.estado === 'formato_invalido';

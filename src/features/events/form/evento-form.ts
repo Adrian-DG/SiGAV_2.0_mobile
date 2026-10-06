@@ -30,6 +30,7 @@ export const IDENTIFICACION_MAX_LENGTH = 20; // cédula o pasaporte (DatosPerson
 export const PLACA_MAX_LENGTH = 10; // DatosVehiculo.PlacaMaxLength
 export const MAX_VEHICULOS = 30; // Evento.MaxVehiculos
 export const MAX_PERSONAS = 30; // Evento.MaxCiudadanos
+export const EDAD_MAXIMA = 120; // DatosPersona.EdadMaxima
 
 export type Ubicacion = { latitud: number; longitud: number; precisionMetros: number | null };
 
@@ -59,6 +60,8 @@ export type InvolucradoForm = {
   nombre: string;
   apellido: string;
   sexo: Sexo;
+  /** Años, como lo escribe el agente (vacío = no indicada). */
+  edad: string;
   telefono: string;
   nacionalidadId: number | null;
   origen: OrigenDato | null;
@@ -147,6 +150,7 @@ export function nuevoInvolucrado(
     nombre: '',
     apellido: '',
     sexo: SexoValue.NoIndicado,
+    edad: '',
     telefono: '',
     nacionalidadId: null,
     origen: null,
@@ -229,6 +233,15 @@ export function formatIdentificacion(raw: string): string {
   return limpio;
 }
 
+/** Solo dígitos, como máximo 3. */
+export const formatEdad = (raw: string) => raw.replace(/\D/g, '').slice(0, 3);
+
+/** La edad en años, o null si está vacía o fuera de rango. */
+export function edadONull(valor: string): number | null {
+  const edad = Number(formatEdad(valor));
+  return formatEdad(valor) && edad <= EDAD_MAXIMA ? edad : null;
+}
+
 export function formatPlaca(raw: string): string {
   return soloAlfanumericos(raw).slice(0, PLACA_MAX_LENGTH);
 }
@@ -255,6 +268,7 @@ export function aplicarCiudadanoConocido(inv: InvolucradoForm, conocido: Ciudada
     nombre: inv.nombre.trim() || conocido.nombre || '',
     apellido: inv.apellido.trim() || conocido.apellido || '',
     sexo: inv.sexo !== SexoValue.NoIndicado ? inv.sexo : ((conocido.sexo as Sexo) ?? SexoValue.NoIndicado),
+    edad: inv.edad.trim() || (conocido.edad != null ? String(conocido.edad) : ''),
     telefono: inv.telefono.trim() || conocido.telefono || '',
     nacionalidadId: inv.nacionalidadId ?? conocido.nacionalidadId,
     origen: conocido.origen,
@@ -315,6 +329,8 @@ export function validarVehiculo(v: VehiculoForm, contexto: ContextoEvento, prefi
 export function validarInvolucrado(inv: InvolucradoForm, contexto: ContextoEvento): FormErrors {
   const errors: FormErrors = {};
   const identificacion = soloAlfanumericos(inv.identificacion);
+
+  if (formatEdad(inv.edad) && edadONull(inv.edad) === null) errors.edad = `La edad debe estar entre 0 y ${EDAD_MAXIMA} años.`;
 
   if (identificacion && /^\d+$/.test(identificacion) && identificacion.length !== 11)
     errors.identificacion = 'La cédula debe tener 11 dígitos (o use un pasaporte).';
@@ -386,6 +402,7 @@ function toCiudadanoRequest(inv: InvolucradoForm): CiudadanoEventoRequest {
     nombre: textoONull(inv.nombre),
     apellido: textoONull(inv.apellido),
     sexo: inv.sexo,
+    edad: edadONull(inv.edad),
     telefono: textoONull(inv.telefono),
     nacionalidadId: inv.nacionalidadId,
     vehiculoClave: rolAdmiteVehiculo(inv.rol) ? inv.vehiculoKey : null,

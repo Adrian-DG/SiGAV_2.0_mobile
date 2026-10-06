@@ -46,7 +46,12 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "SiGAV Móvil usa tu ubicación para registrar dónde ocurre cada evento atendido por la unidad."
+          "locationWhenInUsePermission": "SiGAV Móvil usa tu ubicación para registrar dónde ocurre cada evento atendido por la unidad y mostrar la unidad en el mapa del centro de control.",
+          "locationAlwaysAndWhenInUsePermission": "Durante el turno, SiGAV Móvil comparte la ubicación de la unidad con el centro de control aunque la pantalla esté bloqueada. Deja de enviarla al cerrar sesión.",
+          "locationAlwaysPermission": "Durante el turno, SiGAV Móvil comparte la ubicación de la unidad con el centro de control aunque la pantalla esté bloqueada. Deja de enviarla al cerrar sesión.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [

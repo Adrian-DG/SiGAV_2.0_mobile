@@ -26,6 +26,7 @@ import {
 } from '@/features/events/local/eventos-local';
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
 import type { DenominacionActual, ResumenEventos } from '@/features/events/types';
+import { EstadoUbicacion } from '@/features/posicion/components/estado-ubicacion';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 
 const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
@@ -201,6 +202,7 @@ export default function HomeScreen() {
                 onVerEstadisticas={() => router.push('/estadisticas')}
               />
             )}
+            {!!token && <EstadoUbicacion token={token} />}
             <SegmentedControl
               options={ESTATUS.map((e) => ({
                 label: conteo?.[e] ? `${ESTATUS_LOCAL_LABELS[e]} (${conteo[e]})` : ESTATUS_LOCAL_LABELS[e],

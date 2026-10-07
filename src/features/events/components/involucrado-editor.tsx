@@ -10,7 +10,9 @@ import { Palette } from '@/constants/colors';
 import type { TipoEventoItem } from '@/features/catalogos/api';
 import { listarNacionalidades } from '@/features/catalogos/local/catalogos-local';
 import { buscarCiudadano } from '@/features/historico/api';
-import { ScannerSheet } from '@/features/scan/scanner-sheet';
+import { FotoEvidenciaFila } from '@/features/scan/foto-evidencia';
+import { leerCedula, type DatosCedula } from '@/features/scan/lectura';
+import { ScannerSheet, type Lectura } from '@/features/scan/scanner-sheet';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { ApiError } from '@/lib/api-client';
 
@@ -90,13 +92,14 @@ export function InvolucradoEditor({
   const vehiculoSeleccionado = value.vehiculoKey ? contexto.vehiculos.findIndex((v) => v.key === value.vehiculoKey) + 1 || null : null;
   const vehiculo = contexto.vehiculos.find((v) => v.key === value.vehiculoKey);
 
-  async function buscarPersona() {
-    if (!puedeBuscarIdentificacion(value.identificacion)) return;
+  /** `actual`: la persona recién cambiada (p. ej. con los datos leídos de la cédula), aún no en `value`. */
+  async function buscarPersona(actual: InvolucradoForm = value) {
+    if (!puedeBuscarIdentificacion(actual.identificacion)) return;
     setBusqueda({ estado: 'buscando' });
     try {
-      const conocido = await buscarCiudadano(token, value.identificacion);
+      const conocido = await buscarCiudadano(token, actual.identificacion);
       if (conocido) {
-        onChange(aplicarCiudadanoConocido(value, conocido));
+        onChange(aplicarCiudadanoConocido(actual, conocido));
         const fecha = fechaCorta(conocido.ultimoRegistro);
         setBusqueda({
           estado: 'encontrado',
@@ -143,8 +146,8 @@ export function InvolucradoEditor({
           onChange({ ...value, identificacion, origen: null });
           setBusqueda({ estado: 'idle' });
         }}
-        onBlur={buscarPersona}
-        onSubmitEditing={buscarPersona}
+        onBlur={() => buscarPersona()}
+        onSubmitEditing={() => buscarPersona()}
         autoCapitalize="characters"
         autoCorrect={false}
         maxLength={IDENTIFICACION_MAX_LENGTH + 2}
@@ -157,20 +160,31 @@ export function InvolucradoEditor({
               variant="ghost"
               loading={busqueda.estado === 'buscando'}
               disabled={!puedeBuscarIdentificacion(value.identificacion)}
-              onPress={buscarPersona}
+              onPress={() => buscarPersona()}
             />
           </View>
         }
       />
       <EstadoBusqueda busqueda={busqueda} />
 
-      <ScannerSheet
+      <FotoEvidenciaFila
+        etiqueta="Foto de la cédula"
+        foto={value.fotoIdentificacion}
+        onTomar={() => setEscaneando(true)}
+        onQuitar={() => onChange({ ...value, fotoIdentificacion: null })}
+      />
+
+      <ScannerSheet<DatosCedula>
         visible={escaneando}
         titulo="cédula"
+        leer={lecturaCedula}
         onClose={() => setEscaneando(false)}
-        onResult={(texto) => {
-          onChange({ ...value, identificacion: formatIdentificacion(texto), origen: null });
+        onResult={({ foto, datos, linea }) => {
+          const persona = { ...conDatosDeCedula(value, datos, linea), fotoIdentificacion: foto };
+          onChange(persona);
           setBusqueda({ estado: 'idle' });
+          // Con la cédula leída se buscan enseguida los datos conocidos (teléfono, nacionalidad...)
+          if (persona.identificacion !== value.identificacion) void buscarPersona(persona);
         }}
       />
 
@@ -236,6 +250,38 @@ export function InvolucradoEditor({
       </View>
     </Card>
   );
+}
+
+const SEXO_TEXTO: Record<number, string> = { [SexoValue.Masculino]: 'Masculino', [SexoValue.Femenino]: 'Femenino' };
+
+function lecturaCedula(lineas: string[]): Lectura<DatosCedula> {
+  const d = leerCedula(lineas);
+  const campos = [
+    { etiqueta: 'Cédula', valor: d.identificacion },
+    { etiqueta: 'Nombre', valor: d.nombre },
+    { etiqueta: 'Apellido', valor: d.apellido },
+    { etiqueta: 'Sexo', valor: d.sexo ? SEXO_TEXTO[d.sexo] : undefined },
+    { etiqueta: 'Edad', valor: d.edad !== undefined ? `${d.edad} años` : undefined },
+  ].filter((c): c is { etiqueta: string; valor: string } => !!c.valor);
+  return { datos: d, campos };
+}
+
+/**
+ * Aplica lo leído de la cédula: la identificación siempre (la eligió el agente); el resto solo
+ * en los campos vacíos, para no pisar lo que ya escribió.
+ */
+function conDatosDeCedula(inv: InvolucradoForm, datos: DatosCedula | null, linea: string | null): InvolucradoForm {
+  const identificacion = datos?.identificacion ?? (linea ? formatIdentificacion(linea) : null);
+  if (!datos) return identificacion ? { ...inv, identificacion, origen: null } : inv;
+  return {
+    ...inv,
+    identificacion: identificacion ?? inv.identificacion,
+    origen: identificacion ? null : inv.origen,
+    nombre: inv.nombre.trim() || datos.nombre || '',
+    apellido: inv.apellido.trim() || datos.apellido || '',
+    sexo: inv.sexo !== SexoValue.NoIndicado ? inv.sexo : (datos.sexo ?? SexoValue.NoIndicado),
+    edad: inv.edad.trim() || (datos.edad !== undefined ? String(datos.edad) : ''),
+  };
 }
 
 const styles = StyleSheet.create({

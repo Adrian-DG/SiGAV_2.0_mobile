@@ -16,6 +16,8 @@ import {
   listarTiposVehiculo,
 } from '@/features/catalogos/local/catalogos-local';
 import { buscarVehiculo } from '@/features/historico/api';
+import { FotoEvidenciaFila } from '@/features/scan/foto-evidencia';
+import { leerPlaca } from '@/features/scan/lectura';
 import { ScannerSheet } from '@/features/scan/scanner-sheet';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { ApiError } from '@/lib/api-client';
@@ -74,27 +76,29 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
 
   const nombreTipo = (id: number) => tiposVehiculo.items.find((t) => t.id === id)?.nombre ?? `#${id}`;
 
-  /** Cambia la placa y, si el agente no eligió el tipo a mano, el tipo según las iniciales (A → Carro). */
-  function cambiarPlaca(cambios: Pick<VehiculoForm, 'placa' | 'placaNoEstandar'>) {
+  /** El vehículo con otra placa y, si el agente no eligió el tipo a mano, el tipo según las iniciales (A → Carro). */
+  function conPlaca(cambios: Pick<VehiculoForm, 'placa' | 'placaNoEstandar'>): VehiculoForm {
     const tipoVehiculoId = tipoTrasCambiarPlaca(value, cambios.placa, cambios.placaNoEstandar, prefijos.items);
-    onChange({ ...value, ...cambios, tipoVehiculoId, origen: cambios.placa !== value.placa ? null : value.origen });
+    return { ...value, ...cambios, tipoVehiculoId, origen: cambios.placa !== value.placa ? null : value.origen };
   }
+  const cambiarPlaca = (cambios: Pick<VehiculoForm, 'placa' | 'placaNoEstandar'>) => onChange(conPlaca(cambios));
 
   // Iniciales con varios tipos posibles (G → Jeep o Jeepeta): se ofrecen para elegir con un toque
   const prefijo = value.placaNoEstandar ? null : prefijoPorIniciales(value.placa, prefijos.items);
   const tiposDePlaca = (prefijo?.tipoVehiculoIds ?? []).filter((id) => tiposVehiculo.items.some((t) => t.id === id));
 
-  async function buscarPlaca() {
-    if (!puedeBuscarPlaca(value.placa)) return;
+  /** `actual`: el vehículo recién cambiado (p. ej. con la placa leída de la foto), aún no en `value`. */
+  async function buscarPlaca(actual: VehiculoForm = value) {
+    if (!puedeBuscarPlaca(actual.placa)) return;
     setBusqueda({ estado: 'buscando' });
     try {
-      const conocido = await buscarVehiculo(token, value.placa);
+      const conocido = await buscarVehiculo(token, actual.placa);
       if (conocido) {
         // El histórico manda sobre el tipo que la placa eligió sola (no sobre uno elegido a mano)
-        const tipoAutomatico = !value.placaNoEstandar && value.tipoVehiculoId === tipoPorPlaca(value.placa, prefijos.items);
-        const base = tipoAutomatico ? { ...value, tipoVehiculoId: null } : value;
+        const tipoAutomatico = !actual.placaNoEstandar && actual.tipoVehiculoId === tipoPorPlaca(actual.placa, prefijos.items);
+        const base = tipoAutomatico ? { ...actual, tipoVehiculoId: null } : actual;
         const completado = aplicarVehiculoConocido(base, conocido);
-        const vehiculo = completado.tipoVehiculoId ? completado : { ...completado, tipoVehiculoId: value.tipoVehiculoId };
+        const vehiculo = completado.tipoVehiculoId ? completado : { ...completado, tipoVehiculoId: actual.tipoVehiculoId };
         onChange(vehiculo);
         setMarcaManual(!vehiculo.marcaId && !!vehiculo.marcaTexto);
         setModeloManual(!vehiculo.modeloId && !!vehiculo.modeloTexto);
@@ -129,8 +133,8 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
           cambiarPlaca({ placa: formatPlaca(text), placaNoEstandar: value.placaNoEstandar });
           setBusqueda({ estado: 'idle' });
         }}
-        onBlur={buscarPlaca}
-        onSubmitEditing={buscarPlaca}
+        onBlur={() => buscarPlaca()}
+        onSubmitEditing={() => buscarPlaca()}
         autoCapitalize="characters"
         autoCorrect={false}
         maxLength={PLACA_MAX_LENGTH}
@@ -143,7 +147,7 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
               variant="ghost"
               loading={busqueda.estado === 'buscando'}
               disabled={!puedeBuscarPlaca(value.placa)}
-              onPress={buscarPlaca}
+              onPress={() => buscarPlaca()}
             />
           </View>
         }
@@ -151,13 +155,28 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
       {!errores.placa && <MensajePlaca analisis={analisis} nombreTipo={nombreTipo} />}
       <EstadoBusqueda busqueda={busqueda} />
 
-      <ScannerSheet
+      <FotoEvidenciaFila
+        etiqueta="Foto de la placa"
+        foto={value.fotoPlaca}
+        onTomar={() => setEscaneando(true)}
+        onQuitar={() => set({ fotoPlaca: null })}
+      />
+
+      <ScannerSheet<string | null>
         visible={escaneando}
         titulo="placa"
+        leer={(lineas) => {
+          const placa = leerPlaca(lineas, prefijos.items) ?? null;
+          return { datos: placa, campos: placa ? [{ etiqueta: 'Placa', valor: placa }] : [] };
+        }}
         onClose={() => setEscaneando(false)}
-        onResult={(texto) => {
-          onChange(conTipoSugerido({ ...value, placa: formatPlaca(texto), origen: null }));
+        onResult={({ foto, datos, linea }) => {
+          const placa = datos ?? (linea ? formatPlaca(linea) : null);
+          const vehiculo = { ...(placa ? conPlaca({ placa, placaNoEstandar: value.placaNoEstandar }) : value), fotoPlaca: foto };
+          onChange(vehiculo);
           setBusqueda({ estado: 'idle' });
+          // Con la placa leída se buscan enseguida los datos conocidos del vehículo
+          if (placa) void buscarPlaca(vehiculo);
         }}
       />
 

@@ -123,7 +123,20 @@ export type RegistrarEventoRequest = {
 export type RegistrarEventoResult = {
   id: number;
   esDuplicado: boolean;
+  /** Ids de cada vehículo y persona en el orden del request (para asociarles evidencias). */
+  vehiculoIds?: number[];
+  ciudadanoIds?: number[];
 };
+
+/** Mirrors Domain/Enums/TipoEvidenciaEnum.cs. */
+export const TipoEvidenciaValue = {
+  Foto: 1,
+  FirmaCiudadano: 2,
+  FirmaAgente: 3,
+  FotoPlaca: 4,
+  FotoCedula: 5,
+} as const;
+export type TipoEvidencia = (typeof TipoEvidenciaValue)[keyof typeof TipoEvidenciaValue];
 
 /** Mirrors Application/Features/Estadisticas/EstadisticasViewModels.cs (subset used by the home screen). */
 export type CategoriaTotal = {

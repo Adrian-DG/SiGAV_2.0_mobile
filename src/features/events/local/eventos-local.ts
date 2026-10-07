@@ -20,6 +20,8 @@ import {
   type RolCiudadano,
   type Sexo,
 } from '../types';
+import type { FotoEvidencia } from '@/features/scan/fotos';
+
 import { toRegistrarEventoRequest, type EventoForm, type InvolucradoForm, type VehiculoForm } from '../form/evento-form';
 
 /** Subconjunto de SQLiteDatabase (expo-sqlite) que se usa aquí. */
@@ -118,6 +120,9 @@ type CiudadanoRow = {
   sexo: number;
   /** Años (v7). */
   edad: number | null;
+  /** Foto de la cédula pendiente de subir (v8). */
+  foto_uri: string | null;
+  foto_request_id: string | null;
   telefono: string | null;
   nacionalidad_id: number | null;
   vehiculo_id: number | null;
@@ -140,6 +145,9 @@ type VehiculoRow = {
   color_texto: string | null;
   /** Arreglo JSON de Ids de tipos de evento (v6). */
   tipo_evento_ids: string;
+  /** Foto de la placa pendiente de subir (v8). */
+  foto_uri: string | null;
+  foto_request_id: string | null;
 };
 
 /** Vehículo con sus nombres según los catálogos del dispositivo (LEFT JOIN). */
@@ -239,11 +247,13 @@ export async function guardarEventoLocal(
     }
 
     const vehiculoIdPorClave = new Map<string, number>();
-    for (const v of request.vehiculos) {
+    // request.vehiculos y request.ciudadanos siguen el orden del formulario: de ahí salen las fotos
+    for (const [i, v] of request.vehiculos.entries()) {
+      const foto = form.vehiculos[i]?.fotoPlaca ?? null;
       const result = await db.runAsync(
         `INSERT INTO evento_vehiculos (evento_id, clave, placa, placa_no_estandar, tipo_vehiculo_id, marca_id, marca_texto,
-           modelo_id, modelo_texto, color_id, color_texto, tipo_evento_ids)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           modelo_id, modelo_texto, color_id, color_texto, tipo_evento_ids, foto_uri, foto_request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         v.clave,
         v.placa,
@@ -256,15 +266,18 @@ export async function guardarEventoLocal(
         v.colorId,
         v.colorTexto,
         JSON.stringify(v.tipoEventoIds),
+        foto?.uri ?? null,
+        foto?.requestId ?? null,
       );
       vehiculoIdPorClave.set(v.clave, result.lastInsertRowId);
     }
 
-    for (const c of request.ciudadanos) {
+    for (const [i, c] of request.ciudadanos.entries()) {
+      const foto = form.involucrados[i]?.fotoIdentificacion ?? null;
       await db.runAsync(
         `INSERT INTO evento_ciudadanos (evento_id, rol, identificacion, nombre, apellido, sexo, telefono, nacionalidad_id, vehiculo_id,
-           tipo_evento_ids, edad)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           tipo_evento_ids, edad, foto_uri, foto_request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         c.rol,
         c.identificacion,
@@ -276,6 +289,8 @@ export async function guardarEventoLocal(
         c.vehiculoClave ? (vehiculoIdPorClave.get(c.vehiculoClave) ?? null) : null,
         JSON.stringify(c.tipoEventoIds),
         c.edad,
+        foto?.uri ?? null,
+        foto?.requestId ?? null,
       );
     }
   });
@@ -455,6 +470,7 @@ function aVehiculo(v: VehiculoRow): VehiculoForm {
     colorTexto: v.color_texto ?? '',
     origen: null,
     tipoEventoIds: idsDeJson(v.tipo_evento_ids),
+    fotoPlaca: fotoDeFila(v),
   };
 }
 
@@ -472,7 +488,12 @@ function aInvolucrado(c: CiudadanoRow, vehiculoKey: string | null): InvolucradoF
     origen: null,
     vehiculoKey,
     tipoEventoIds: idsDeJson(c.tipo_evento_ids),
+    fotoIdentificacion: fotoDeFila(c),
   };
+}
+
+function fotoDeFila(fila: { foto_uri: string | null; foto_request_id: string | null }): FotoEvidencia | null {
+  return fila.foto_uri && fila.foto_request_id ? { uri: fila.foto_uri, requestId: fila.foto_request_id } : null;
 }
 
 /** Ids guardados como arreglo JSON; vacío si la columna no es un arreglo de números. */

@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 7;
+const DATABASE_VERSION = 8;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -240,6 +240,18 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   if (currentVersion < 7) {
     // v7: edad de la persona en años (NULL = no indicada).
     await db.execAsync('ALTER TABLE evento_ciudadanos ADD COLUMN edad INTEGER');
+  }
+
+  if (currentVersion < 8) {
+    // v8: foto de la placa / de la cédula, pendiente de subir como evidencia al enviar el evento.
+    //  - foto_uri: archivo en la carpeta de documentos de la app (features/scan/fotos.ts).
+    //  - foto_request_id: clave de idempotencia de la subida (un reintento no la duplica).
+    await db.execAsync(`
+      ALTER TABLE evento_vehiculos ADD COLUMN foto_uri TEXT;
+      ALTER TABLE evento_vehiculos ADD COLUMN foto_request_id TEXT;
+      ALTER TABLE evento_ciudadanos ADD COLUMN foto_uri TEXT;
+      ALTER TABLE evento_ciudadanos ADD COLUMN foto_request_id TEXT;
+    `);
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

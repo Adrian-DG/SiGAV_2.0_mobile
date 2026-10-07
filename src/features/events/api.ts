@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api-client';
 import { diaOperativo } from '@/lib/fecha-operativa';
 
 import type {
+  TipoEvidencia,
   DenominacionActual,
   EstadisticasEventosResponse,
   EstadoEvento,
@@ -43,6 +44,37 @@ export function getEventosUnidad(token: string, estado: EstadoEvento, page = 1, 
  */
 export function registrarEvento(token: string, request: RegistrarEventoRequest) {
   return apiRequest<RegistrarEventoResult>('/eventos', { method: 'POST', token, body: request });
+}
+
+/**
+ * POST /api/eventos/{id}/evidencias (multipart) — sube una foto del evento, asociada a una persona o
+ * a un vehículo (sus Ids en la API). Idempotente por requestId: un reintento no la duplica.
+ */
+export function subirEvidencia(
+  token: string,
+  eventoId: number,
+  evidencia: {
+    tipo: TipoEvidencia;
+    uri: string;
+    requestId: string;
+    ciudadanoId?: number | null;
+    vehiculoId?: number | null;
+  },
+) {
+  const form = new FormData();
+  // React Native sube el archivo a partir de su uri (la API detecta el formato por su contenido)
+  form.append('archivo', { uri: evidencia.uri, name: 'evidencia.jpg', type: 'image/jpeg' } as unknown as Blob);
+  form.append('tipo', String(evidencia.tipo));
+  form.append('requestId', evidencia.requestId);
+  if (evidencia.ciudadanoId) form.append('ciudadanoId', String(evidencia.ciudadanoId));
+  if (evidencia.vehiculoId) form.append('vehiculoId', String(evidencia.vehiculoId));
+  // Una foto pesa más que un JSON: con mala señal necesita más tiempo
+  return apiRequest<{ id: number; esDuplicado: boolean }>(`/eventos/${eventoId}/evidencias`, {
+    method: 'POST',
+    token,
+    body: form,
+    timeoutMs: 60_000,
+  });
 }
 
 /**

@@ -14,6 +14,7 @@
  */
 import type { PrefijoPlacaItem } from '@/features/catalogos/api';
 import type { CiudadanoConocido, OrigenDato, VehiculoConocido } from '@/features/historico/api';
+import type { FotoEvidencia } from '@/features/scan/fotos';
 
 import {
   RolCiudadanoValue,
@@ -51,6 +52,8 @@ export type VehiculoForm = {
   origen: OrigenDato | null;
   /** Tipos de evento atendidos a este vehículo. */
   tipoEventoIds: number[];
+  /** Foto de la placa: se sube como evidencia (Foto de la placa) al enviar el evento. */
+  fotoPlaca: FotoEvidencia | null;
 };
 
 export type InvolucradoForm = {
@@ -69,6 +72,8 @@ export type InvolucradoForm = {
   vehiculoKey: string | null;
   /** Tipos de evento atendidos a esta persona. Opcional si iba en un vehículo (comparte los de él). */
   tipoEventoIds: number[];
+  /** Foto de la cédula o pasaporte: se sube como evidencia (Foto de la cédula) al enviar el evento. */
+  fotoIdentificacion: FotoEvidencia | null;
 };
 
 export type EventoForm = {
@@ -134,6 +139,7 @@ export function nuevoVehiculo(key: string): VehiculoForm {
     colorTexto: '',
     origen: null,
     tipoEventoIds: [],
+    fotoPlaca: null,
   };
 }
 
@@ -156,6 +162,7 @@ export function nuevoInvolucrado(
     origen: null,
     vehiculoKey: rolAdmiteVehiculo(rol) ? vehiculoKey : null,
     tipoEventoIds: [],
+    fotoIdentificacion: null,
   };
 }
 

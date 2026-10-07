@@ -62,17 +62,27 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
     if (!foto?.uri) return;
     setEstado({ tag: 'procesando', uri: foto.uri });
     try {
-      const resultado = await recognizeText(foto.uri, { languages: ['es', 'en'], recognitionLevel: 'line' });
-      const lineas = (resultado.pages?.[0]?.elements ?? [])
-        .map((el, i) => ({ id: String(i), texto: el.text.trim() }))
+      // Sin idiomas: en Android elige el reconocedor latino (el que sirve para cédulas y placas)
+      const resultado = await recognizeText(foto.uri, { recognitionLevel: 'line' });
+      // fullText como respaldo: algunas versiones devuelven el texto sin elementos por línea
+      const textos = resultado.pages?.flatMap((p) => p.elements.map((el) => el.text)) ?? [];
+      const lineas = (textos.length ? textos : (resultado.fullText ?? '').split('\n'))
+        .map((texto, i) => ({ id: String(i), texto: texto.trim() }))
         .filter((l) => l.texto.length > 0);
+      if (!resultado.success) throw new Error(resultado.errorMessage ?? 'El reconocimiento de texto no respondió.');
       setEstado(
-        resultado.success && lineas.length > 0
+        lineas.length > 0
           ? { tag: 'resultados', uri: foto.uri, lineas }
-          : { tag: 'sin-texto', uri: foto.uri, mensaje: `No se reconoció texto en la foto de la ${titulo}.` },
+          : {
+              tag: 'sin-texto',
+              uri: foto.uri,
+              mensaje: `No se reconoció texto en la foto de la ${titulo}. Acérquese, evite reflejos y que la imagen esté nítida.`,
+            },
       );
-    } catch {
-      setEstado({ tag: 'sin-texto', uri: foto.uri, mensaje: 'No se pudo leer el texto de la foto.' });
+    } catch (e) {
+      const detalle = e instanceof Error ? e.message : String(e);
+      console.warn('[ScannerSheet] reconocimiento de texto', detalle);
+      setEstado({ tag: 'sin-texto', uri: foto.uri, mensaje: mensajeOcr(detalle) });
     }
   }
 
@@ -161,6 +171,15 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
       </SafeAreaView>
     </Modal>
   );
+}
+
+/** Motivo de la falla en palabras del agente, con el detalle técnico para reportarlo. */
+function mensajeOcr(detalle: string): string {
+  if (/linked|Expo Go/i.test(detalle))
+    return 'Esta versión de la app no incluye el lector de texto (se necesita el build de desarrollo, no Expo Go).';
+  if (/download/i.test(detalle))
+    return 'El lector de texto aún se está descargando en el teléfono (requiere Google Play services e internet). Intente en unos minutos.';
+  return `No se pudo leer el texto de la foto (${detalle}).`;
 }
 
 const styles = StyleSheet.create({

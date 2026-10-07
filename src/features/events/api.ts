@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { apiRequest } from '@/lib/api-client';
 import { diaOperativo } from '@/lib/fecha-operativa';
 
@@ -62,8 +64,10 @@ export function subirEvidencia(
   },
 ) {
   const form = new FormData();
-  // React Native sube el archivo a partir de su uri (la API detecta el formato por su contenido)
-  form.append('archivo', { uri: evidencia.uri, name: 'evidencia.jpg', type: 'image/jpeg' } as unknown as Blob);
+  // El fetch global es el de Expo (expo/fetch), que NO admite el { uri, name, type } de React Native
+  // ("Unsupported FormDataPart"): el archivo va como File de expo-file-system, que sí admite. La API
+  // detecta el formato por el contenido, no por el nombre.
+  form.append('archivo', new File(evidencia.uri) as unknown as Blob);
   form.append('tipo', String(evidencia.tipo));
   form.append('requestId', evidencia.requestId);
   if (evidencia.ciudadanoId) form.append('ciudadanoId', String(evidencia.ciudadanoId));

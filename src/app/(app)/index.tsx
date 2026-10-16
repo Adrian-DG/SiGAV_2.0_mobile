@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
@@ -12,7 +12,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
-import { getDenominacionActual, getEstadisticasEventosHoy } from '@/features/events/api';
+import { completarEvento, getDenominacionActual, getEstadisticasEventosHoy } from '@/features/events/api';
 import { agentesDeLaUnidad, describirAgente } from '@/lib/jwt';
 import { EventCard } from '@/features/events/components/event-card';
 import { UnitSummaryCard } from '@/features/events/components/unit-summary-card';
@@ -27,7 +27,11 @@ import {
 } from '@/features/events/local/eventos-local';
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
 import type { DenominacionActual, ResumenEventos } from '@/features/events/types';
+import { cambiarAgenteEvento, getEventosAsignados, iniciarEvento, type EventoAsignado } from '@/features/events/asignados/api';
+import { EventoAsignadoCard } from '@/features/events/asignados/evento-asignado-card';
+import { useNotificaciones } from '@/features/notificaciones/notificaciones-context';
 import { EstadoUbicacion } from '@/features/posicion/components/estado-ubicacion';
+import { reportarOcupacion } from '@/features/posicion/seguimiento';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 
 const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
@@ -107,6 +111,9 @@ export default function HomeScreen() {
           setEventsState({ status: 'ready', items });
           setConteo(totales);
         }
+        // Se recarga tras registrar, cerrar o enviar un evento: el call center debe saber de inmediato
+        // qué agentes quedaron ocupados (o libres) por eventos que solo están en el dispositivo
+        reportarOcupacion();
       } catch {
         if (!cancelled) setEventsState({ status: 'error', message: 'No se pudieron leer los eventos del dispositivo.' });
       }
@@ -135,7 +142,38 @@ export default function HomeScreen() {
     };
   }, [token, unidadId, refreshNonce]);
 
+  // Eventos asignados por el call center: viven en el servidor. Se piden de nuevo con cada aviso del
+  // hub (asignado o anulado) y al reconectarse, por si se perdió alguno con la app cerrada.
+  const { estado: estadoAvisos, versionEventos } = useNotificaciones();
+  const [asignados, setAsignados] = useState<EventoAsignado[] | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    getEventosAsignados(token)
+      .then((items) => {
+        if (!cancelled) setAsignados(items);
+      })
+      .catch(() => {
+        // Sin conexión se conservan los últimos que se vieron
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, refreshNonce, versionEventos]);
+
   const refetchAll = () => setRefreshNonce((n) => n + 1);
+
+  /** Acción sobre un evento asignado: si falla se avisa; siempre se refresca la lista. */
+  async function operarAsignado(accion: () => Promise<unknown>, titulo: string) {
+    try {
+      await accion();
+    } catch (error) {
+      Alert.alert(titulo, describirError(error));
+      throw error;
+    } finally {
+      refetchAll();
+    }
+  }
 
   async function cerrar(item: EventoLocalListItem, tipoCierreId: number) {
     await cerrarEventoLocal(db, item.localId, tipoCierreId);
@@ -213,6 +251,25 @@ export default function HomeScreen() {
               />
             )}
             {!!token && <EstadoUbicacion token={token} />}
+            {!!token && !!asignados?.length && (
+              <View style={styles.asignados}>
+                <Text style={styles.asignadosTitulo}>
+                  Asignados por el centro ({asignados.length}){estadoAvisos !== 'conectado' ? ' · avisos sin conexión' : ''}
+                </Text>
+                {asignados.map((evento) => (
+                  <EventoAsignadoCard
+                    key={evento.id}
+                    evento={evento}
+                    agentes={agentesUnidad}
+                    onIniciar={() => operarAsignado(() => iniciarEvento(token, evento.id), 'No se pudo registrar la llegada')}
+                    onCompletar={(tipoCierreId) =>
+                      operarAsignado(() => completarEvento(token, evento.id, { tipoCierreId }), 'No se pudo cerrar el evento')
+                    }
+                    onCambiarAgente={(id) => operarAsignado(() => cambiarAgenteEvento(token, evento.id, id), 'No se pudo cambiar el agente')}
+                  />
+                ))}
+              </View>
+            )}
             <SegmentedControl
               options={ESTATUS.map((e) => ({
                 label: conteo?.[e] ? `${ESTATUS_LOCAL_LABELS[e]} (${conteo[e]})` : ESTATUS_LOCAL_LABELS[e],
@@ -272,6 +329,15 @@ const styles = StyleSheet.create({
   listHeader: {
     gap: 14,
     marginBottom: 16,
+  },
+  asignados: {
+    gap: 10,
+  },
+  asignadosTitulo: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Palette.warning[900],
+    textTransform: 'uppercase',
   },
   separator: {
     height: 10,

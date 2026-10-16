@@ -365,6 +365,20 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
   });
 }
 
+/**
+ * Agentes de la sesión que atienden algún evento en curso del dispositivo (agente_atiende_id null =
+ * el de la sesión). Se envían con la posición para que el call center no les asigne otro evento.
+ */
+export async function agentesConEventoEnCurso(db: LocalDb, sesion: SesionEvento): Promise<number[]> {
+  const filas = await db.getAllAsync<{ agente: number }>(
+    `SELECT DISTINCT COALESCE(agente_atiende_id, agente_id) AS agente FROM eventos
+     WHERE agente_id = ? AND unidad_id = ? AND ${FILTRO_ESTATUS.en_curso}`,
+    sesion.agenteId,
+    sesion.unidadId,
+  );
+  return filas.map((f) => f.agente);
+}
+
 /** Cuántos eventos de la sesión hay en cada estatus (para las pestañas del listado). */
 export async function contarEventosLocales(db: LocalDb, sesion: SesionEvento): Promise<Record<EstatusLocal, number>> {
   const filas = await db.getAllAsync<{ synced: number; estado: number; total: number }>(

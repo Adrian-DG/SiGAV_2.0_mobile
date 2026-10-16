@@ -42,6 +42,12 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#05539B"
+        }
+      ],
       "expo-sqlite",
       [
         "expo-location",

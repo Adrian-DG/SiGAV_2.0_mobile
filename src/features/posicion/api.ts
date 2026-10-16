@@ -9,6 +9,11 @@ export type ReportarPosicionRequest = {
   rumbo: number | null;
   velocidadKmh: number | null;
   fechaHoraGpsUtc: string;
+  /**
+   * Agentes de la sesión (el agente o su componente) con un evento en curso en el dispositivo, aún sin
+   * enviar: el call center no les asigna otro. Sin indicar, el servidor conserva lo último informado.
+   */
+  agentesOcupados?: number[];
 };
 
 /**

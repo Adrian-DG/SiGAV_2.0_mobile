@@ -1,10 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
+import * as SQLite from 'expo-sqlite';
 import * as TaskManager from 'expo-task-manager';
 
 import { TOKEN_KEY } from '@/features/auth/session-store';
+import { agentesConEventoEnCurso } from '@/features/events/local/eventos-local';
 import { ApiError } from '@/lib/api-client';
+import { leerSesionMovil } from '@/lib/jwt';
 import { secureStorage } from '@/lib/storage';
 
 import { reportarPosicion } from './api';
@@ -83,12 +86,33 @@ let tokenActual: string | null = null;
 let ultimoEnvio = 0;
 let enviando = false;
 let vigilancia: Location.LocationSubscription | null = null;
+/** Última lectura enviada: con ella se reporta un cambio de ocupación sin esperar al GPS. */
+let ultimaLectura: Location.LocationObject | null = null;
 
-async function procesar(lecturas: Location.LocationObject[]): Promise<void> {
+// Conexión propia a la base del dispositivo: la tarea puede correr sin la app (ni su SQLiteProvider)
+let db: Promise<SQLite.SQLiteDatabase> | null = null;
+
+/**
+ * Agentes de la sesión con algún evento en curso en el dispositivo, o undefined si no se pudo leer
+ * (el servidor conserva entonces lo último que se le informó).
+ */
+async function agentesOcupados(token: string): Promise<number[] | undefined> {
+  const sesion = leerSesionMovil(token);
+  if (!sesion) return undefined;
+  try {
+    db ??= SQLite.openDatabaseAsync('sigav.db');
+    return await agentesConEventoEnCurso(await db, sesion);
+  } catch {
+    db = null;
+    return undefined;
+  }
+}
+
+async function procesar(lecturas: Location.LocationObject[], forzar = false): Promise<void> {
   const lectura = lecturas.reduce<Location.LocationObject | null>((ultima, l) => (!ultima || l.timestamp > ultima.timestamp ? l : ultima), null);
   if (!lectura || enviando) return;
   if (lectura.coords.accuracy !== null && lectura.coords.accuracy > PRECISION_MAXIMA_M) return;
-  if (Date.now() - ultimoEnvio < ENVIO_MINIMO_MS) return;
+  if (!forzar && Date.now() - ultimoEnvio < ENVIO_MINIMO_MS) return;
 
   // Si Android relanzó la tarea sin la app abierta, el token se lee del almacenamiento
   const token = tokenActual ?? (await secureStorage.getItem(TOKEN_KEY).catch(() => null));
@@ -104,7 +128,9 @@ async function procesar(lecturas: Location.LocationObject[]): Promise<void> {
       rumbo: heading !== null && heading >= 0 ? heading : null,
       velocidadKmh: speed !== null && speed >= 0 ? speed * 3.6 : null,
       fechaHoraGpsUtc: new Date(lectura.timestamp).toISOString(),
+      agentesOcupados: await agentesOcupados(token),
     });
+    ultimaLectura = lectura;
     ultimoEnvio = Date.now();
     registrarEnvio(ultimoEnvio);
   } catch (error) {
@@ -218,10 +244,20 @@ export async function pedirPermisoSegundoPlano(): Promise<boolean> {
   return segundoPlano.granted;
 }
 
+/**
+ * Los eventos en curso del dispositivo cambiaron (se registró, cerró o envió uno): se reporta la
+ * ocupación de los agentes de inmediato con la última lectura, sin esperar la próxima del GPS (el
+ * servidor la toma aunque la lectura sea la misma).
+ */
+export function reportarOcupacion(): void {
+  if (tokenActual && ultimaLectura) void procesar([ultimaLectura], true);
+}
+
 /** Deja de enviar (al cerrar sesión o si el servidor rechaza los envíos, con su motivo). */
 export async function detenerSeguimiento(mensaje?: string): Promise<void> {
   tokenActual = null;
   ultimoEnvio = 0;
+  ultimaLectura = null;
   detenerVigilancia();
   if (await tareaIniciada()) await Location.stopLocationUpdatesAsync(TAREA_UBICACION).catch(() => {});
   actualizar(mensaje ? { modo: 'detenido', mensaje } : { modo: 'inactivo' });

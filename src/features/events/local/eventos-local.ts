@@ -63,6 +63,8 @@ export type EventoLocalListItem = {
   tipoCierreId: number | null;
   /** Nombre en el catálogo del dispositivo (null si el tipo ya no está en él). */
   tipoCierre: string | null;
+  /** Agente que atiende (null = el de la sesión). */
+  agenteAtiendeId: number | null;
   syncError: string | null;
 };
 
@@ -104,6 +106,7 @@ type EventoRow = {
   tipo_cierre_id: number | null;
   /** cat_tipos_cierre.nombre (LEFT JOIN). */
   tipo_cierre: string | null;
+  agente_atiende_id: number | null;
   synced: number;
   sync_error: string | null;
 };
@@ -182,8 +185,8 @@ export async function guardarEventoLocal(
     if (localId === undefined) {
       const result = await db.runAsync(
         `INSERT INTO eventos (request_id, estado, latitud, longitud, provincia_id, municipio_id, direccion, comentario,
-           fecha_hora_reporte_utc, fecha_hora_llegada_utc, agente_id, unidad_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           fecha_hora_reporte_utc, fecha_hora_llegada_utc, agente_id, unidad_id, agente_atiende_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         request.requestId,
         EstadoEventoValue.EnCurso,
         request.latitud,
@@ -196,6 +199,7 @@ export async function guardarEventoLocal(
         request.fechaHoraLlegadaUtc,
         sesion.agenteId,
         sesion.unidadId,
+        form.agenteAtiendeId,
         ahoraIso,
         ahoraIso,
       );
@@ -203,7 +207,7 @@ export async function guardarEventoLocal(
     } else {
       const result = await db.runAsync(
         `UPDATE eventos SET latitud = ?, longitud = ?, provincia_id = ?, municipio_id = ?, direccion = ?, comentario = ?,
-           sync_error = NULL, updated_at = ?
+           agente_atiende_id = ?, sync_error = NULL, updated_at = ?
          WHERE id = ? AND synced = 0`,
         request.latitud,
         request.longitud,
@@ -211,6 +215,7 @@ export async function guardarEventoLocal(
         request.municipioId,
         request.direccion,
         request.comentario,
+        form.agenteAtiendeId,
         ahoraIso,
         localId,
       );
@@ -354,6 +359,7 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
       fechaHoraReporte: e.fecha_hora_reporte_utc,
       tipoCierreId: e.tipo_cierre_id,
       tipoCierre: e.tipo_cierre,
+      agenteAtiendeId: e.agente_atiende_id,
       syncError: e.sync_error,
     };
   });
@@ -407,6 +413,7 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
       tipoEventoIds: tipos.map((t) => t.tipo_evento_id),
       direccion: e.direccion ?? '',
       comentario: e.comentario ?? '',
+      agenteAtiendeId: e.agente_atiende_id,
       vehiculos: vehiculos.map(aVehiculo),
       involucrados: ciudadanos.map((c) => aInvolucrado(c, c.vehiculo_id ? (clavePorId.get(c.vehiculo_id) ?? null) : null)),
     },

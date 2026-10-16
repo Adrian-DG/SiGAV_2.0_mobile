@@ -39,6 +39,12 @@ export default function LoginScreen() {
   const [fichaStatus, setFichaStatus] = useState<FieldStatus>('idle');
   const [fichaError, setFichaError] = useState<string | null>(null);
 
+  // Componente (opcional): segundo agente que opera la unidad
+  const [conComponente, setConComponente] = useState(false);
+  const [componente, setComponente] = useState('');
+  const [componenteStatus, setComponenteStatus] = useState<FieldStatus>('idle');
+  const [componenteError, setComponenteError] = useState<string | null>(null);
+
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -97,11 +103,51 @@ export default function LoginScreen() {
     }
   }
 
+  async function validateComponente() {
+    if (!componente) return;
+
+    if (!isCedulaComplete(componente)) {
+      setComponenteStatus('invalid');
+      setComponenteError('Formato inválido. Use 000-0000000-0.');
+      return;
+    }
+    if (unmaskCedula(componente) === unmaskCedula(cedula)) {
+      setComponenteStatus('invalid');
+      setComponenteError('El componente debe ser un agente distinto al suyo.');
+      return;
+    }
+
+    setComponenteStatus('checking');
+    setComponenteError(null);
+    try {
+      const result = await confirmAgente(unmaskCedula(componente));
+      if (!result.created) {
+        setComponenteStatus('invalid');
+        setComponenteError('Cédula no registrada.');
+      } else if (!result.isAuthorized) {
+        setComponenteStatus('invalid');
+        setComponenteError('Agente no autorizado. Contacte a front desk.');
+      } else {
+        setComponenteStatus('valid');
+      }
+    } catch (error) {
+      setComponenteStatus('invalid');
+      setComponenteError(error instanceof ApiError ? error.message : 'No se pudo validar la cédula del componente.');
+    }
+  }
+
+  function quitarComponente() {
+    setConComponente(false);
+    setComponente('');
+    setComponenteStatus('idle');
+    setComponenteError(null);
+  }
+
   async function handleSignIn() {
     setFormError(null);
     setIsSigningIn(true);
     try {
-      await signIn(unmaskCedula(cedula), ficha);
+      await signIn(unmaskCedula(cedula), ficha, conComponente ? unmaskCedula(componente) : null);
     } catch (error) {
       setFormError(error instanceof ApiError ? error.message : 'No se pudo iniciar sesión.');
     } finally {
@@ -110,7 +156,9 @@ export default function LoginScreen() {
   }
 
   const canShowFicha = cedulaStatus === 'valid';
-  const canSignIn = cedulaStatus === 'valid' && fichaStatus === 'valid';
+  const canShowComponente = cedulaStatus === 'valid' && fichaStatus === 'valid';
+  const canSignIn =
+    cedulaStatus === 'valid' && fichaStatus === 'valid' && (!conComponente || componenteStatus === 'valid');
 
   return (
     <KeyboardAvoidingView
@@ -195,6 +243,44 @@ export default function LoginScreen() {
               </>
             )}
 
+            {canShowComponente && !conComponente && (
+              <Button label="Agregar componente" variant="ghost" onPress={() => setConComponente(true)} />
+            )}
+            {canShowComponente && conComponente && (
+              <>
+                <TextField
+                  label="Cédula del componente"
+                  placeholder="000-0000000-0"
+                  value={componente}
+                  onChangeText={(text) => {
+                    setComponente(maskCedula(text));
+                    setComponenteStatus('idle');
+                    setComponenteError(null);
+                  }}
+                  onSubmitEditing={validateComponente}
+                  editable={componenteStatus !== 'checking'}
+                  keyboardType="number-pad"
+                  maxLength={13}
+                  returnKeyType="done"
+                  errorText={componenteError}
+                />
+                <Text style={styles.hint}>
+                  Segundo agente de la unidad. Al registrar cada evento podrá indicar cuál de los dos lo atiende.
+                </Text>
+                {componenteStatus !== 'valid' && (
+                  <Button
+                    label="Validar componente"
+                    variant="ghost"
+                    loading={componenteStatus === 'checking'}
+                    disabled={!isCedulaComplete(componente)}
+                    onPress={validateComponente}
+                  />
+                )}
+                {componenteStatus === 'valid' && <Text style={styles.validText}>✓ Componente verificado</Text>}
+                <Button label="Quitar componente" variant="ghost" onPress={quitarComponente} />
+              </>
+            )}
+
             {formError && <Text style={styles.formError}>{formError}</Text>}
 
             <Button
@@ -263,6 +349,11 @@ const styles = StyleSheet.create({
     color: Palette.success[600],
     fontWeight: '700',
     fontSize: 13,
+  },
+  hint: {
+    color: Palette.primary[500],
+    fontSize: 12,
+    lineHeight: 17,
   },
   notice: {
     // warning[900] sobre warning[50] = 7.65:1 (warning[700] daba 3.55:1, bajo el mínimo WCAG de 4.5)

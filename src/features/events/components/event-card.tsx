@@ -29,6 +29,8 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 type EventCardProps = {
   item: EventoLocalListItem;
+  /** Agente que atiende el evento; solo se indica cuando la unidad opera con componente. */
+  agenteAtiende?: string | null;
   onEditar: () => void;
   /** Guarda el tipo de cierre en el dispositivo (el evento pasa a "por enviar"). */
   onCerrar: (tipoCierreId: number) => Promise<void>;
@@ -42,7 +44,7 @@ type EventCardProps = {
  *  - por enviar: Editar · Enviar (y cambiar el tipo de cierre)
  *  - enviado:    solo lectura
  */
-export function EventCard({ item, onEditar, onCerrar, onEnviar }: EventCardProps) {
+export function EventCard({ item, agenteAtiende, onEditar, onCerrar, onEnviar }: EventCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [cerrarVisible, setCerrarVisible] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -95,6 +97,7 @@ export function EventCard({ item, onEditar, onCerrar, onEnviar }: EventCardProps
 
       {expanded && (
         <View style={styles.details}>
+          {!!agenteAtiende && <DetailRow label="Atiende" value={agenteAtiende} />}
           <DetailRow label="Ciudadano" value={item.ciudadanoPrincipal ?? 'No registrado'} />
           <DetailRow label="Vehículo" value={item.vehiculoDescripcion ?? 'N/A'} />
           <DetailRow

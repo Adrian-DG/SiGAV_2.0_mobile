@@ -14,7 +14,8 @@ type AuthContextValue = {
   isLoading: boolean;
   /** Motivo por el que se cerró la sesión sin que el agente lo pidiera (se muestra en el login). */
   notice: string | null;
-  signIn: (cedula: string, ficha: string) => Promise<void>;
+  /** `cedulaComponente`: segundo agente que opera la unidad (opcional). */
+  signIn: (cedula: string, ficha: string, cedulaComponente?: string | null) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -63,8 +64,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       session,
       isLoading,
       notice,
-      async signIn(cedula: string, ficha: string) {
-        const { token } = await loginMovil(cedula, ficha);
+      async signIn(cedula: string, ficha: string, cedulaComponente?: string | null) {
+        const { token } = await loginMovil(cedula, ficha, cedulaComponente);
         // Agente y unidad vienen en el token: no hace falta otra petición para conocerlos
         const nueva = sesionDesdeToken(token);
         await persistSession(secureStorage, nueva);

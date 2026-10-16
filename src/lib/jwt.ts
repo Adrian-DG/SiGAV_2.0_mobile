@@ -14,6 +14,12 @@ type JwtPayload = {
   institucion?: string; // siglas (ARD, ERD, PN...)
   unidadId?: string;
   ficha?: string;
+  // Componente: segundo agente de la unidad (opcional)
+  componenteId?: string;
+  componenteCedula?: string;
+  componenteNombre?: string;
+  componenteRango?: string;
+  componenteInstitucion?: string;
 };
 
 function decodeBase64Url(segment: string): string {
@@ -55,6 +61,20 @@ export type SesionMovil = {
   institucion: string;
   unidadId: number;
   ficha: string;
+  /**
+   * Segundo agente que opera la unidad, o null si el agente va solo. Cada evento indica cuál de
+   * los dos lo atiende (uno puede quedarse en un evento mientras el otro va a otro).
+   */
+  componente: AgenteUnidad | null;
+};
+
+/** Un agente de la unidad: el de la sesión o su componente. */
+export type AgenteUnidad = {
+  agenteId: number;
+  identificacion: string;
+  nombre: string;
+  rango: string;
+  institucion: string;
 };
 
 const entero = (valor: string | undefined) => {
@@ -74,6 +94,17 @@ export function leerSesionMovil(token: string): SesionMovil | null {
   const unidadId = entero(p.unidadId);
   if (!agenteId || !unidadId || !p.ficha) return null;
 
+  const componenteId = entero(p.componenteId);
+  const componente: AgenteUnidad | null = componenteId
+    ? {
+        agenteId: componenteId,
+        identificacion: p.componenteCedula ?? '',
+        nombre: p.componenteNombre?.trim() ?? '',
+        rango: p.componenteRango?.trim() ?? '',
+        institucion: p.componenteInstitucion?.trim() ?? '',
+      }
+    : null;
+
   return {
     agenteId,
     identificacion: p.name ?? '',
@@ -82,5 +113,17 @@ export function leerSesionMovil(token: string): SesionMovil | null {
     institucion: p.institucion?.trim() ?? '',
     unidadId,
     ficha: p.ficha,
+    componente,
   };
+}
+
+/** Agentes que operan la unidad de la sesión: el de la sesión primero y, si hay, su componente. */
+export function agentesDeLaUnidad(sesion: SesionMovil): AgenteUnidad[] {
+  const { agenteId, identificacion, nombre, rango, institucion, componente } = sesion;
+  return componente ? [{ agenteId, identificacion, nombre, rango, institucion }, componente] : [{ agenteId, identificacion, nombre, rango, institucion }];
+}
+
+/** "Rango · Nombre · Institución" para mostrar un agente. */
+export function describirAgente(agente: Pick<AgenteUnidad, 'rango' | 'nombre' | 'institucion'>): string {
+  return [agente.rango, agente.nombre, agente.institucion].filter(Boolean).join(' · ');
 }

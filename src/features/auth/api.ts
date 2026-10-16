@@ -15,11 +15,14 @@ export function confirmUnidad(ficha: string) {
   return apiRequest<boolean>('/unidades/confirm', { query: { ficha } });
 }
 
-/** POST /api/authentication/movil/login — agente + unidad, emite un token de audiencia móvil. */
-export function loginMovil(cedula: string, ficha: string) {
+/**
+ * POST /api/authentication/movil/login — agente + unidad (y, opcional, la cédula del componente:
+ * el segundo agente de la unidad), emite un token de audiencia móvil.
+ */
+export function loginMovil(cedula: string, ficha: string, cedulaComponente?: string | null) {
   return apiRequest<AuthenticatedResponse>('/authentication/movil/login', {
     method: 'POST',
-    body: { cedula, ficha },
+    body: { cedula, ficha, cedulaComponente: cedulaComponente || null },
   });
 }
 

@@ -92,8 +92,8 @@ export type CiudadanoEventoRequest = {
 };
 
 /**
- * Mirrors RegistrarEventoCommand. Desde la app, unidad, agente y canal los toma la API de la sesión,
- * y el tramo es el de la denominación de la unidad.
+ * Mirrors RegistrarEventoCommand. Desde la app, unidad y canal los toma la API de la sesión (el agente
+ * también, salvo que se indique su componente), y el tramo es el de la denominación de la unidad.
  */
 export type RegistrarEventoRequest = {
   requestId: string;
@@ -105,6 +105,8 @@ export type RegistrarEventoRequest = {
   fechaHoraLlegadaUtc: string;
   direccion: string | null;
   comentario: string | null;
+  /** Agente que atiende el evento: el de la sesión o su componente. Sin indicar, el de la sesión. */
+  agenteId?: number;
   vehiculos: VehiculoEventoRequest[];
   ciudadanos: CiudadanoEventoRequest[];
   /** El evento se envía ya cerrado en el dispositivo: la API aplica llegada y cierre al registrarlo. */

@@ -19,4 +19,6 @@ export type SesionActual = {
   agenteId: number | null;
   unidadId: number | null;
   ficha: string | null;
+  componenteId: number | null;
+  componenteNombre: string | null;
 };

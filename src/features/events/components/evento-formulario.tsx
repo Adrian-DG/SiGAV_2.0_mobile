@@ -47,6 +47,7 @@ import type { TipoEventoInfo } from '@/features/events/local/eventos-local';
 import { CategoriaEventoValue, RolCiudadanoValue, type RolCiudadano } from '@/features/events/types';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { useUbicacionActual } from '@/hooks/use-ubicacion-actual';
+import { agentesDeLaUnidad, describirAgente } from '@/lib/jwt';
 import { secureStorage } from '@/lib/storage';
 
 const ULTIMO_MUNICIPIO_KEY = 'sigav_movil_ultimo_municipio';
@@ -102,8 +103,19 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
       .catch(() => {});
   }, [inicial.municipioId]);
 
+  // Con componente se elige cuál de los dos atiende. Si el evento quedó asignado a un agente que ya
+  // no opera la unidad (se inició sesión con otro componente), pasa al agente de la sesión.
+  const agentesUnidad = agentesDeLaUnidad(session!.agente);
+  const agenteAtiendeId = agentesUnidad.some((a) => a.agenteId === form.agenteAtiendeId)
+    ? form.agenteAtiendeId!
+    : session!.agente.agenteId;
+
   const ubicacion = capturarUbicacion ? gps.ubicacion : form.ubicacion;
-  const formCompleto: EventoForm = { ...form, ubicacion };
+  const formCompleto: EventoForm = {
+    ...form,
+    ubicacion,
+    agenteAtiendeId: agenteAtiendeId === session!.agente.agenteId ? null : agenteAtiendeId,
+  };
 
   async function guardar() {
     const errores = validarEvento(formCompleto, prefijos.items);
@@ -189,10 +201,28 @@ export function EventoFormulario({ titulo, inicial, capturarUbicacion, textoGuar
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Evento en campo</Text>
             <Dato label="Unidad" value={session!.agente.ficha} />
-            <Dato
-              label="Agente"
-              value={[session!.agente.rango, session!.agente.nombre, session!.agente.institucion].filter(Boolean).join(' · ')}
-            />
+            {agentesUnidad.length > 1 ? (
+              <View style={styles.dato}>
+                <Text style={styles.datoLabel}>Agente que atiende</Text>
+                <View style={styles.chips}>
+                  {agentesUnidad.map((agente) => (
+                    <Chip
+                      key={agente.agenteId}
+                      label={[agente.rango, agente.nombre].filter(Boolean).join(' ')}
+                      selected={agente.agenteId === agenteAtiendeId}
+                      onPress={() =>
+                        setForm((f) => ({
+                          ...f,
+                          agenteAtiendeId: agente.agenteId === session!.agente.agenteId ? null : agente.agenteId,
+                        }))
+                      }
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <Dato label="Agente" value={describirAgente(session!.agente)} />
+            )}
             <Dato
               label="Llegada"
               value={new Date(form.fechaHoraLlegada).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}

@@ -13,6 +13,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
 import { getDenominacionActual, getEstadisticasEventosHoy } from '@/features/events/api';
+import { agentesDeLaUnidad, describirAgente } from '@/lib/jwt';
 import { EventCard } from '@/features/events/components/event-card';
 import { UnitSummaryCard } from '@/features/events/components/unit-summary-card';
 import { describirError, enviarEventoLocal } from '@/features/events/local/enviar-evento';
@@ -63,6 +64,14 @@ export default function HomeScreen() {
   const unidadId = session?.agente.unidadId;
 
   const agenteId = sesion?.agenteId;
+
+  // Con componente, cada tarjeta indica cuál de los dos agentes atiende el evento
+  const agentesUnidad = session?.agente.componente ? agentesDeLaUnidad(session.agente) : null;
+  const agenteQueAtiende = (id: number | null) => {
+    if (!agentesUnidad) return null;
+    const agente = agentesUnidad.find((a) => a.agenteId === (id ?? agenteId));
+    return agente ? describirAgente(agente) : null;
+  };
 
   // Resumen y denominación vienen de la API (sin conexión simplemente no se muestran).
   // Los eventos, del dispositivo: se registran, editan y cierran aquí hasta que el agente los envía.
@@ -196,6 +205,7 @@ export default function HomeScreen() {
                 rango={session.agente.rango}
                 nombre={session.agente.nombre}
                 ficha={session.agente.ficha}
+                componente={session.agente.componente ? describirAgente(session.agente.componente) : null}
                 denominacion={denominacion}
                 resumen={resumen}
                 isLoadingResumen={isLoadingResumen}
@@ -216,6 +226,7 @@ export default function HomeScreen() {
         renderItem={({ item }) => (
           <EventCard
             item={item}
+            agenteAtiende={agenteQueAtiende(item.agenteAtiendeId)}
             onEditar={() => router.push({ pathname: '/events/[id]', params: { id: String(item.localId) } })}
             onCerrar={(tipoCierreId) => cerrar(item, tipoCierreId)}
             onEnviar={() => enviar(item)}

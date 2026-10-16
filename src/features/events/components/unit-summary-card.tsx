@@ -11,6 +11,8 @@ type UnitSummaryCardProps = {
   rango: string;
   nombre: string;
   ficha: string;
+  /** Segundo agente de la unidad ("Rango · Nombre · Institución"), si opera con componente. */
+  componente?: string | null;
   /** null mientras carga o sin conexión. */
   denominacion: DenominacionActual | null;
   resumen: ResumenEventos | null;
@@ -32,6 +34,7 @@ export function UnitSummaryCard({
   rango,
   nombre,
   ficha,
+  componente,
   denominacion,
   resumen,
   isLoadingResumen,
@@ -62,6 +65,11 @@ export function UnitSummaryCard({
           {!!denominacion?.tramo && (
             <Text style={styles.tramo} numberOfLines={1}>
               {denominacion.tramo}
+            </Text>
+          )}
+          {!!componente && (
+            <Text style={styles.tramo} numberOfLines={2}>
+              Componente: {componente}
             </Text>
           )}
         </View>

@@ -69,6 +69,11 @@ export type EventoForm = {
   tipoEventoIds: number[];
   direccion: string;
   comentario: string;
+  /**
+   * Agente que atiende el evento cuando la unidad opera con componente: el de la sesión o su
+   * componente. null = el agente de la sesión.
+   */
+  agenteAtiendeId: number | null;
   vehiculos: VehiculoForm[];
   involucrados: InvolucradoForm[];
 };
@@ -99,6 +104,7 @@ export function nuevoEventoForm(requestId: string, ahora: Date = new Date()): Ev
     tipoEventoIds: [],
     direccion: '',
     comentario: '',
+    agenteAtiendeId: null,
     vehiculos: [],
     involucrados: [],
   };
@@ -381,6 +387,7 @@ export function toRegistrarEventoRequest(form: EventoForm): RegistrarEventoReque
     fechaHoraLlegadaUtc: form.fechaHoraLlegada,
     direccion: textoONull(form.direccion),
     comentario: textoONull(form.comentario),
+    ...(form.agenteAtiendeId ? { agenteId: form.agenteAtiendeId } : {}),
     vehiculos: form.vehiculos.map(toVehiculoRequest),
     ciudadanos: form.involucrados.map(toCiudadanoRequest),
   };

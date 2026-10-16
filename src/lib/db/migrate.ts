@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -220,6 +220,13 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
       -- mande el paquete completo (mientras tanto se siguen usando los catálogos guardados).
       UPDATE catalogos_meta SET valor = valor || '-v4' WHERE clave = 'version';
     `);
+  }
+
+  if (currentVersion < 6) {
+    // v6: la unidad puede operar con un componente (segundo agente). agente_atiende_id es el
+    // agente que atiende el evento (el de la sesión o su componente); NULL = el de la sesión.
+    // agente_id sigue siendo el dueño del evento en el dispositivo (la sesión que lo registró).
+    await db.execAsync('ALTER TABLE eventos ADD COLUMN agente_atiende_id INTEGER');
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

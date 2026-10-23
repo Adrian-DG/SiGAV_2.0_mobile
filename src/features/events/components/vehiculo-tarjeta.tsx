@@ -5,11 +5,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Palette } from '@/constants/colors';
+import type { TipoEventoItem } from '@/features/catalogos/api';
 import { obtenerNombresVehiculo, type NombresVehiculo } from '@/features/catalogos/local/catalogos-local';
 import { useCatalogos } from '@/features/catalogos/catalogos-context';
 
 import type { InvolucradoForm, VehiculoForm } from '../form/evento-form';
 import { RolCiudadanoValue, type RolCiudadano } from '../types';
+import { nombresTipos } from './tipos-evento-selector';
 
 export const ROL_LABEL: Record<number, string> = {
   [RolCiudadanoValue.Conductor]: 'Conductor',
@@ -21,6 +23,20 @@ export const ROL_LABEL: Record<number, string> = {
 
 export const nombrePersona = (inv: InvolucradoForm) =>
   `${inv.nombre} ${inv.apellido}`.trim() || inv.identificacion || 'Persona no identificada';
+
+/** Lo atendido, en una línea ("Neumático, Calentamiento"). */
+export function TiposAtendidos({ nombres, vacio }: { nombres: string[]; vacio?: string }) {
+  if (nombres.length === 0) return vacio ? <Text style={styles.tiposVacio}>{vacio}</Text> : null;
+  return (
+    <View style={styles.tipos}>
+      {nombres.map((n) => (
+        <Text key={n} style={styles.tipo}>
+          {n}
+        </Text>
+      ))}
+    </View>
+  );
+}
 
 /** Marca, modelo y color con los nombres del catálogo del dispositivo (o el texto libre). */
 function useDescripcionVehiculo(v: VehiculoForm): string {
@@ -52,6 +68,7 @@ type VehiculoTarjetaProps = {
   indice: number;
   vehiculo: VehiculoForm;
   ocupantes: InvolucradoForm[];
+  tipos: TipoEventoItem[];
   error?: string;
   erroresPersona: (key: string) => string | undefined;
   puedeAgregarConductor: boolean;
@@ -67,6 +84,7 @@ export function VehiculoTarjeta({
   indice,
   vehiculo,
   ocupantes,
+  tipos,
   error,
   erroresPersona,
   puedeAgregarConductor,
@@ -88,6 +106,7 @@ export function VehiculoTarjeta({
             {vehiculo.placaNoEstandar ? ' (no estándar)' : ''}
           </Text>
           <Text style={styles.muted}>{descripcion}</Text>
+          <TiposAtendidos nombres={nombresTipos(tipos, vehiculo.tipoEventoIds)} vacio="Sin tipos de evento" />
           {!!error && <Text style={styles.error}>{error}</Text>}
         </Pressable>
         <IconButton
@@ -125,6 +144,7 @@ export function VehiculoTarjeta({
             <Text style={styles.ocupanteTexto}>
               {ROL_LABEL[inv.rol]}: {nombrePersona(inv)}
             </Text>
+            <TiposAtendidos nombres={nombresTipos(tipos, inv.tipoEventoIds)} />
             {!!erroresPersona(inv.key) && <Text style={styles.error}>{erroresPersona(inv.key)}</Text>}
           </Pressable>
           <IconButton glyph="✕" label={`Quitar a ${nombrePersona(inv)}`} tint={Palette.neutral[600]} onPress={() => onQuitarPersona(inv.key)} />
@@ -172,4 +192,16 @@ const styles = StyleSheet.create({
   fila: { flexDirection: 'row', gap: 8 },
   confirmar: { gap: 8, padding: 10, borderRadius: 10, backgroundColor: Palette.warning[50] },
   confirmarTexto: { fontSize: 13, fontWeight: '600', color: Palette.warning[900] },
+  tipos: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  tipo: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Palette.primary[700],
+    backgroundColor: Palette.primary[50],
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  tiposVacio: { fontSize: 12, fontWeight: '600', color: Palette.danger[600], marginTop: 4 },
 });

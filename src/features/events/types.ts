@@ -76,6 +76,8 @@ export type VehiculoEventoRequest = {
   marcaTexto: string | null;
   modeloTexto: string | null;
   colorTexto: string | null;
+  /** Tipos atendidos a este vehículo, de entre los `tipoEventoIds` del evento. */
+  tipoEventoIds: number[];
 };
 
 /** Mirrors CiudadanoEventoRequest. */
@@ -85,10 +87,14 @@ export type CiudadanoEventoRequest = {
   nombre: string | null;
   apellido: string | null;
   sexo: Sexo;
+  /** Años al momento del evento. */
+  edad: number | null;
   telefono: string | null;
   nacionalidadId: number | null;
   /** Clave del vehículo en que iba (null = sin vehículo). */
   vehiculoClave: string | null;
+  /** Tipos atendidos a esta persona, de entre los `tipoEventoIds` del evento. */
+  tipoEventoIds: number[];
 };
 
 /**
@@ -100,6 +106,7 @@ export type RegistrarEventoRequest = {
   latitud: number;
   longitud: number;
   municipioId: number;
+  /** Todos los tipos del evento: incluyen los de cada vehículo y persona. */
   tipoEventoIds: number[];
   fechaHoraReporteUtc: string;
   fechaHoraLlegadaUtc: string;
@@ -118,7 +125,20 @@ export type RegistrarEventoRequest = {
 export type RegistrarEventoResult = {
   id: number;
   esDuplicado: boolean;
+  /** Ids de cada vehículo y persona en el orden del request (para asociarles evidencias). */
+  vehiculoIds?: number[];
+  ciudadanoIds?: number[];
 };
+
+/** Mirrors Domain/Enums/TipoEvidenciaEnum.cs. */
+export const TipoEvidenciaValue = {
+  Foto: 1,
+  FirmaCiudadano: 2,
+  FirmaAgente: 3,
+  FotoPlaca: 4,
+  FotoCedula: 5,
+} as const;
+export type TipoEvidencia = (typeof TipoEvidenciaValue)[keyof typeof TipoEvidenciaValue];
 
 /** Mirrors Application/Features/Estadisticas/EstadisticasViewModels.cs (subset used by the home screen). */
 export type CategoriaTotal = {

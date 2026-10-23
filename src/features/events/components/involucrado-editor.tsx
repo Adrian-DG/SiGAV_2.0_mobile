@@ -7,18 +7,24 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SelectField } from '@/components/ui/select-field';
 import { TextField } from '@/components/ui/text-field';
 import { Palette } from '@/constants/colors';
+import type { TipoEventoItem } from '@/features/catalogos/api';
 import { listarNacionalidades } from '@/features/catalogos/local/catalogos-local';
 import { buscarCiudadano } from '@/features/historico/api';
+import { FotoEvidenciaFila } from '@/features/scan/foto-evidencia';
+import { leerCedula, type DatosCedula } from '@/features/scan/lectura';
+import { ScannerSheet, type Lectura } from '@/features/scan/scanner-sheet';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { ApiError } from '@/lib/api-client';
 
 import {
   aplicarCiudadanoConocido,
   cambiarRol,
+  formatEdad,
   formatIdentificacion,
   IDENTIFICACION_MAX_LENGTH,
   puedeBuscarIdentificacion,
   rolAdmiteVehiculo,
+  requiereTiposPropios,
   rolRequiereVehiculo,
   validarInvolucrado,
   type ContextoEvento,
@@ -26,6 +32,7 @@ import {
 } from '../form/evento-form';
 import { RolCiudadanoValue, SexoValue, type RolCiudadano, type Sexo } from '../types';
 import { EstadoBusqueda, fechaCorta, type Busqueda } from './estado-busqueda';
+import { TiposEventoSelector } from './tipos-evento-selector';
 
 /** Roles que el agente puede asignar en campo. */
 const ROL_OPTIONS: { label: string; value: RolCiudadano }[] = [
@@ -53,14 +60,26 @@ type InvolucradoEditorProps = {
   contexto: ContextoEvento;
   /** Nombre de cada vehículo para elegirlo ("Vehículo 1 · A123456"). */
   etiquetaVehiculo: (vehiculoKey: string) => string;
+  tipos: TipoEventoItem[];
   onChange: (value: InvolucradoForm) => void;
-  onSave: () => void;
+  /** `otro`: al guardar, abrir enseguida otra persona (en el mismo vehículo, si iba en uno). */
+  onSave: (otro: boolean) => void;
   onCancel: () => void;
 };
 
-export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, onChange, onSave, onCancel }: InvolucradoEditorProps) {
+export function InvolucradoEditor({
+  token,
+  value,
+  contexto,
+  etiquetaVehiculo,
+  tipos,
+  onChange,
+  onSave,
+  onCancel,
+}: InvolucradoEditorProps) {
   const [busqueda, setBusqueda] = useState<Busqueda>({ estado: 'idle' });
   const [intentoGuardar, setIntentoGuardar] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
 
   const nacionalidades = useCatalogo('nacionalidades', listarNacionalidades);
 
@@ -71,14 +90,16 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
   // SelectField trabaja con Ids numéricos: posición del vehículo en el evento (1, 2, ...)
   const opcionesVehiculo = contexto.vehiculos.map((v, i) => ({ id: i + 1, nombre: etiquetaVehiculo(v.key) }));
   const vehiculoSeleccionado = value.vehiculoKey ? contexto.vehiculos.findIndex((v) => v.key === value.vehiculoKey) + 1 || null : null;
+  const vehiculo = contexto.vehiculos.find((v) => v.key === value.vehiculoKey);
 
-  async function buscarPersona() {
-    if (!puedeBuscarIdentificacion(value.identificacion)) return;
+  /** `actual`: la persona recién cambiada (p. ej. con los datos leídos de la cédula), aún no en `value`. */
+  async function buscarPersona(actual: InvolucradoForm = value) {
+    if (!puedeBuscarIdentificacion(actual.identificacion)) return;
     setBusqueda({ estado: 'buscando' });
     try {
-      const conocido = await buscarCiudadano(token, value.identificacion);
+      const conocido = await buscarCiudadano(token, actual.identificacion);
       if (conocido) {
-        onChange(aplicarCiudadanoConocido(value, conocido));
+        onChange(aplicarCiudadanoConocido(actual, conocido));
         const fecha = fechaCorta(conocido.ultimoRegistro);
         setBusqueda({
           estado: 'encontrado',
@@ -92,9 +113,9 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
     }
   }
 
-  function guardar() {
+  function guardar(otro: boolean) {
     setIntentoGuardar(true);
-    if (Object.keys(validarInvolucrado(value, contexto)).length === 0) onSave();
+    if (Object.keys(validarInvolucrado(value, contexto)).length === 0) onSave(otro);
   }
 
   return (
@@ -125,23 +146,47 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
           onChange({ ...value, identificacion, origen: null });
           setBusqueda({ estado: 'idle' });
         }}
-        onBlur={buscarPersona}
-        onSubmitEditing={buscarPersona}
+        onBlur={() => buscarPersona()}
+        onSubmitEditing={() => buscarPersona()}
         autoCapitalize="characters"
         autoCorrect={false}
         maxLength={IDENTIFICACION_MAX_LENGTH + 2}
         errorText={errores.identificacion}
         rightAdornment={
-          <Button
-            label="Buscar"
-            variant="ghost"
-            loading={busqueda.estado === 'buscando'}
-            disabled={!puedeBuscarIdentificacion(value.identificacion)}
-            onPress={buscarPersona}
-          />
+          <View style={styles.adornos}>
+            <Button label="Escanear" variant="ghost" onPress={() => setEscaneando(true)} />
+            <Button
+              label="Buscar"
+              variant="ghost"
+              loading={busqueda.estado === 'buscando'}
+              disabled={!puedeBuscarIdentificacion(value.identificacion)}
+              onPress={() => buscarPersona()}
+            />
+          </View>
         }
       />
       <EstadoBusqueda busqueda={busqueda} />
+
+      <FotoEvidenciaFila
+        etiqueta="Foto de la cédula"
+        foto={value.fotoIdentificacion}
+        onTomar={() => setEscaneando(true)}
+        onQuitar={() => onChange({ ...value, fotoIdentificacion: null })}
+      />
+
+      <ScannerSheet<DatosCedula>
+        visible={escaneando}
+        titulo="cédula"
+        leer={lecturaCedula}
+        onClose={() => setEscaneando(false)}
+        onResult={({ foto, datos, linea }) => {
+          const persona = { ...conDatosDeCedula(value, datos, linea), fotoIdentificacion: foto };
+          onChange(persona);
+          setBusqueda({ estado: 'idle' });
+          // Con la cédula leída se buscan enseguida los datos conocidos (teléfono, nacionalidad...)
+          if (persona.identificacion !== value.identificacion) void buscarPersona(persona);
+        }}
+      />
 
       <View style={styles.row}>
         <View style={styles.flex}>
@@ -153,13 +198,28 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
       </View>
       <Text style={styles.fieldLabel}>Sexo</Text>
       <SegmentedControl options={SEXO_OPTIONS} value={value.sexo} onChange={(sexo) => onChange({ ...value, sexo })} />
-      <TextField
-        label="Teléfono"
-        placeholder="809-000-0000"
-        keyboardType="phone-pad"
-        value={value.telefono}
-        onChangeText={(telefono) => onChange({ ...value, telefono })}
-      />
+      <View style={styles.row}>
+        <View style={styles.edad}>
+          <TextField
+            label="Edad"
+            placeholder="Años"
+            keyboardType="number-pad"
+            maxLength={3}
+            value={value.edad}
+            onChangeText={(edad) => onChange({ ...value, edad: formatEdad(edad) })}
+            errorText={errores.edad}
+          />
+        </View>
+        <View style={styles.flex}>
+          <TextField
+            label="Teléfono"
+            placeholder="809-000-0000"
+            keyboardType="phone-pad"
+            value={value.telefono}
+            onChangeText={(telefono) => onChange({ ...value, telefono })}
+          />
+        </View>
+      </View>
       <SelectField
         label="Nacionalidad"
         options={nacionalidades.items}
@@ -168,22 +228,69 @@ export function InvolucradoEditor({ token, value, contexto, etiquetaVehiculo, on
         onChange={(nacionalidadId) => onChange({ ...value, nacionalidadId })}
       />
 
+      <View style={styles.separador} />
+      <TiposEventoSelector
+        tipos={tipos}
+        label={requiereTiposPropios(value) ? '¿Qué se le atendió?' : '¿Qué se le atendió? (opcional)'}
+        ayuda={requiereTiposPropios(value) ? undefined : 'Si no marca nada, comparte lo atendido al vehículo en que iba.'}
+        value={value.tipoEventoIds}
+        onChange={(tipoEventoIds) => onChange({ ...value, tipoEventoIds })}
+        atajos={vehiculo ? [{ label: `Igual que ${etiquetaVehiculo(vehiculo.key).toLowerCase()}`, ids: vehiculo.tipoEventoIds }] : []}
+        errorText={errores.tipos}
+      />
+
+      <Button label="Guardar persona" onPress={() => guardar(false)} />
       <View style={styles.row}>
         <View style={styles.flex}>
           <Button label="Cancelar" variant="ghost" onPress={onCancel} />
         </View>
         <View style={styles.flex}>
-          <Button label="Guardar persona" onPress={guardar} />
+          <Button label="Guardar y agregar otra" variant="secondary" onPress={() => guardar(true)} />
         </View>
       </View>
     </Card>
   );
 }
 
+const SEXO_TEXTO: Record<number, string> = { [SexoValue.Masculino]: 'Masculino', [SexoValue.Femenino]: 'Femenino' };
+
+function lecturaCedula(lineas: string[]): Lectura<DatosCedula> {
+  const d = leerCedula(lineas);
+  const campos = [
+    { etiqueta: 'Cédula', valor: d.identificacion },
+    { etiqueta: 'Nombre', valor: d.nombre },
+    { etiqueta: 'Apellido', valor: d.apellido },
+    { etiqueta: 'Sexo', valor: d.sexo ? SEXO_TEXTO[d.sexo] : undefined },
+    { etiqueta: 'Edad', valor: d.edad !== undefined ? `${d.edad} años` : undefined },
+  ].filter((c): c is { etiqueta: string; valor: string } => !!c.valor);
+  return { datos: d, campos };
+}
+
+/**
+ * Aplica lo leído de la cédula: la identificación siempre (la eligió el agente); el resto solo
+ * en los campos vacíos, para no pisar lo que ya escribió.
+ */
+function conDatosDeCedula(inv: InvolucradoForm, datos: DatosCedula | null, linea: string | null): InvolucradoForm {
+  const identificacion = datos?.identificacion ?? (linea ? formatIdentificacion(linea) : null);
+  if (!datos) return identificacion ? { ...inv, identificacion, origen: null } : inv;
+  return {
+    ...inv,
+    identificacion: identificacion ?? inv.identificacion,
+    origen: identificacion ? null : inv.origen,
+    nombre: inv.nombre.trim() || datos.nombre || '',
+    apellido: inv.apellido.trim() || datos.apellido || '',
+    sexo: inv.sexo !== SexoValue.NoIndicado ? inv.sexo : (datos.sexo ?? SexoValue.NoIndicado),
+    edad: inv.edad.trim() || (datos.edad !== undefined ? String(datos.edad) : ''),
+  };
+}
+
 const styles = StyleSheet.create({
   card: { gap: 12 },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
+  adornos: { flexDirection: 'row' },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
+  edad: { width: 96 },
+  separador: { height: 1, backgroundColor: Palette.neutral[200] },
 });

@@ -13,6 +13,8 @@ export type CiudadanoConocido = {
   nacionalidadId: number | null;
   origen: OrigenDato;
   ultimoRegistro: string | null;
+  /** Estimada: la del último evento más los años transcurridos (null si viene del maestro). */
+  edad?: number | null;
 };
 
 /** Mirrors VehiculoConocidoViewModel. */

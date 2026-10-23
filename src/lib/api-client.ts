@@ -87,11 +87,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     response = await fetch(buildUrl(path, query), {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        // FormData (subida de archivos): fetch pone el multipart/form-data con su boundary
+        ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...apiConfig.headers,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
     text = await response.text();

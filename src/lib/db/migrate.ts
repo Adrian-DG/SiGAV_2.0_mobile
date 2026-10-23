@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 9;
 
 /**
  * Runs once per install (guarded by PRAGMA user_version), passed as SQLiteProvider's onInit.
@@ -24,6 +24,11 @@ const DATABASE_VERSION = 6;
  *
  * Desde la v5 los vehículos son filas propias (evento_vehiculos, espejo de evento_vehiculo) y cada
  * persona apunta al vehículo en que iba: un vehículo puede tener varias personas, o ninguna.
+ *
+ * Desde la v6 cada vehículo y persona guarda sus propios tipos de evento (espejo de
+ * evento_vehiculo_tipo_evento y evento_ciudadano_tipo_evento); evento_tipos sigue siendo la unión.
+ *
+ * Desde la v7 cada persona guarda su edad (DatosPersona.Edad).
  */
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -223,11 +228,63 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   }
 
   if (currentVersion < 6) {
-    // v6: la unidad puede operar con un componente (segundo agente). agente_atiende_id es el
+    // v6: tipos de evento por vehículo y por persona, como arreglo JSON de Ids (se leen y escriben
+    // siempre junto con su fila). Los eventos guardados antes conservan sus tipos en evento_tipos:
+    // el formulario los muestra como "otros tipos atendidos en el lugar".
+    await db.execAsync(`
+      ALTER TABLE evento_vehiculos ADD COLUMN tipo_evento_ids TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE evento_ciudadanos ADD COLUMN tipo_evento_ids TEXT NOT NULL DEFAULT '[]';
+    `);
+  }
+
+  if (currentVersion < 7) {
+    // v7: edad de la persona en años (NULL = no indicada).
+    await db.execAsync('ALTER TABLE evento_ciudadanos ADD COLUMN edad INTEGER');
+  }
+
+  if (currentVersion < 8) {
+    // v8: foto de la placa / de la cédula, pendiente de subir como evidencia al enviar el evento.
+    //  - foto_uri: archivo en la carpeta de documentos de la app (features/scan/fotos.ts).
+    //  - foto_request_id: clave de idempotencia de la subida (un reintento no la duplica).
+    await db.execAsync(`
+      ALTER TABLE evento_vehiculos ADD COLUMN foto_uri TEXT;
+      ALTER TABLE evento_vehiculos ADD COLUMN foto_request_id TEXT;
+      ALTER TABLE evento_ciudadanos ADD COLUMN foto_uri TEXT;
+      ALTER TABLE evento_ciudadanos ADD COLUMN foto_request_id TEXT;
+    `);
+  }
+
+  if (currentVersion < 9) {
+    // v9: la unidad puede operar con un componente (segundo agente). agente_atiende_id es el
     // agente que atiende el evento (el de la sesión o su componente); NULL = el de la sesión.
     // agente_id sigue siendo el dueño del evento en el dispositivo (la sesión que lo registró).
-    await db.execAsync('ALTER TABLE eventos ADD COLUMN agente_atiende_id INTEGER');
+    //
+    // Las ramas componente-unidad y ocr-reconocimiento-texto usaron ambas la v6 para cambios
+    // distintos: un dispositivo que quedó en la v6 de componente-unidad no tiene las columnas de
+    // la v6–v8 de arriba (y uno de ocr no tiene agente_atiende_id). Por eso aquí se agrega lo que
+    // falte en cada tabla en lugar de un ALTER fijo.
+    await agregarColumnasFaltantes(db, 'eventos', { agente_atiende_id: 'INTEGER' });
+    await agregarColumnasFaltantes(db, 'evento_vehiculos', {
+      tipo_evento_ids: "TEXT NOT NULL DEFAULT '[]'",
+      foto_uri: 'TEXT',
+      foto_request_id: 'TEXT',
+    });
+    await agregarColumnasFaltantes(db, 'evento_ciudadanos', {
+      tipo_evento_ids: "TEXT NOT NULL DEFAULT '[]'",
+      edad: 'INTEGER',
+      foto_uri: 'TEXT',
+      foto_request_id: 'TEXT',
+    });
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+async function agregarColumnasFaltantes(db: SQLiteDatabase, tabla: string, columnas: Record<string, string>) {
+  const existentes = new Set(
+    (await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${tabla})`)).map((c) => c.name),
+  );
+  for (const [nombre, tipo] of Object.entries(columnas)) {
+    if (!existentes.has(nombre)) await db.execAsync(`ALTER TABLE ${tabla} ADD COLUMN ${nombre} ${tipo}`);
+  }
 }

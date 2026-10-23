@@ -20,6 +20,8 @@ import {
   type RolCiudadano,
   type Sexo,
 } from '../types';
+import type { FotoEvidencia } from '@/features/scan/fotos';
+
 import { toRegistrarEventoRequest, type EventoForm, type InvolucradoForm, type VehiculoForm } from '../form/evento-form';
 
 /** Subconjunto de SQLiteDatabase (expo-sqlite) que se usa aquí. */
@@ -119,9 +121,16 @@ type CiudadanoRow = {
   nombre: string | null;
   apellido: string | null;
   sexo: number;
+  /** Años (v7). */
+  edad: number | null;
+  /** Foto de la cédula pendiente de subir (v8). */
+  foto_uri: string | null;
+  foto_request_id: string | null;
   telefono: string | null;
   nacionalidad_id: number | null;
   vehiculo_id: number | null;
+  /** Arreglo JSON de Ids de tipos de evento (v6). */
+  tipo_evento_ids: string;
 };
 
 type VehiculoRow = {
@@ -137,6 +146,11 @@ type VehiculoRow = {
   modelo_texto: string | null;
   color_id: number | null;
   color_texto: string | null;
+  /** Arreglo JSON de Ids de tipos de evento (v6). */
+  tipo_evento_ids: string;
+  /** Foto de la placa pendiente de subir (v8). */
+  foto_uri: string | null;
+  foto_request_id: string | null;
 };
 
 /** Vehículo con sus nombres según los catálogos del dispositivo (LEFT JOIN). */
@@ -238,11 +252,13 @@ export async function guardarEventoLocal(
     }
 
     const vehiculoIdPorClave = new Map<string, number>();
-    for (const v of request.vehiculos) {
+    // request.vehiculos y request.ciudadanos siguen el orden del formulario: de ahí salen las fotos
+    for (const [i, v] of request.vehiculos.entries()) {
+      const foto = form.vehiculos[i]?.fotoPlaca ?? null;
       const result = await db.runAsync(
         `INSERT INTO evento_vehiculos (evento_id, clave, placa, placa_no_estandar, tipo_vehiculo_id, marca_id, marca_texto,
-           modelo_id, modelo_texto, color_id, color_texto)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           modelo_id, modelo_texto, color_id, color_texto, tipo_evento_ids, foto_uri, foto_request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         v.clave,
         v.placa,
@@ -254,14 +270,19 @@ export async function guardarEventoLocal(
         v.modeloTexto,
         v.colorId,
         v.colorTexto,
+        JSON.stringify(v.tipoEventoIds),
+        foto?.uri ?? null,
+        foto?.requestId ?? null,
       );
       vehiculoIdPorClave.set(v.clave, result.lastInsertRowId);
     }
 
-    for (const c of request.ciudadanos) {
+    for (const [i, c] of request.ciudadanos.entries()) {
+      const foto = form.involucrados[i]?.fotoIdentificacion ?? null;
       await db.runAsync(
-        `INSERT INTO evento_ciudadanos (evento_id, rol, identificacion, nombre, apellido, sexo, telefono, nacionalidad_id, vehiculo_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO evento_ciudadanos (evento_id, rol, identificacion, nombre, apellido, sexo, telefono, nacionalidad_id, vehiculo_id,
+           tipo_evento_ids, edad, foto_uri, foto_request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         c.rol,
         c.identificacion,
@@ -271,6 +292,10 @@ export async function guardarEventoLocal(
         c.telefono,
         c.nacionalidadId,
         c.vehiculoClave ? (vehiculoIdPorClave.get(c.vehiculoClave) ?? null) : null,
+        JSON.stringify(c.tipoEventoIds),
+        c.edad,
+        foto?.uri ?? null,
+        foto?.requestId ?? null,
       );
     }
   });
@@ -408,6 +433,10 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
   const ciudadanos = await db.getAllAsync<CiudadanoRow>('SELECT * FROM evento_ciudadanos WHERE evento_id = ? ORDER BY id', localId);
   const vehiculos = await db.getAllAsync<VehiculoRow>('SELECT * FROM evento_vehiculos WHERE evento_id = ? ORDER BY id', localId);
   const clavePorId = new Map(vehiculos.map((v) => [v.id, v.clave]));
+  const vehiculosForm = vehiculos.map(aVehiculo);
+  const involucrados = ciudadanos.map((c) => aInvolucrado(c, c.vehiculo_id ? (clavePorId.get(c.vehiculo_id) ?? null) : null));
+  // evento_tipos guarda la unión: "otros tipos del lugar" son los que no tiene ningún vehículo ni persona
+  const asignados = new Set([...vehiculosForm, ...involucrados].flatMap((x) => x.tipoEventoIds));
 
   return {
     localId: e.id,
@@ -424,12 +453,12 @@ export async function obtenerEventoLocal(db: LocalDb, localId: number, sesion: S
       ubicacion: { latitud: e.latitud, longitud: e.longitud, precisionMetros: null },
       provinciaId: e.provincia_id,
       municipioId: e.municipio_id,
-      tipoEventoIds: tipos.map((t) => t.tipo_evento_id),
+      tipoEventoIds: tipos.map((t) => t.tipo_evento_id).filter((id) => !asignados.has(id)),
       direccion: e.direccion ?? '',
       comentario: e.comentario ?? '',
       agenteAtiendeId: e.agente_atiende_id,
-      vehiculos: vehiculos.map(aVehiculo),
-      involucrados: ciudadanos.map((c) => aInvolucrado(c, c.vehiculo_id ? (clavePorId.get(c.vehiculo_id) ?? null) : null)),
+      vehiculos: vehiculosForm,
+      involucrados,
     },
   };
 }
@@ -461,6 +490,8 @@ function aVehiculo(v: VehiculoRow): VehiculoForm {
     colorId: v.color_id,
     colorTexto: v.color_texto ?? '',
     origen: null,
+    tipoEventoIds: idsDeJson(v.tipo_evento_ids),
+    fotoPlaca: fotoDeFila(v),
   };
 }
 
@@ -472,11 +503,28 @@ function aInvolucrado(c: CiudadanoRow, vehiculoKey: string | null): InvolucradoF
     nombre: c.nombre ?? '',
     apellido: c.apellido ?? '',
     sexo: (c.sexo as Sexo) ?? SexoValue.NoIndicado,
+    edad: c.edad != null ? String(c.edad) : '',
     telefono: c.telefono ?? '',
     nacionalidadId: c.nacionalidad_id,
     origen: null,
     vehiculoKey,
+    tipoEventoIds: idsDeJson(c.tipo_evento_ids),
+    fotoIdentificacion: fotoDeFila(c),
   };
+}
+
+function fotoDeFila(fila: { foto_uri: string | null; foto_request_id: string | null }): FotoEvidencia | null {
+  return fila.foto_uri && fila.foto_request_id ? { uri: fila.foto_uri, requestId: fila.foto_request_id } : null;
+}
+
+/** Ids guardados como arreglo JSON; vacío si la columna no es un arreglo de números. */
+function idsDeJson(valor: string | null | undefined): number[] {
+  try {
+    const ids: unknown = JSON.parse(valor ?? '[]');
+    return Array.isArray(ids) ? ids.filter((id): id is number => Number.isInteger(id) && id > 0) : [];
+  } catch {
+    return [];
+  }
 }
 
 function nombrePersona(c: CiudadanoRow): string {

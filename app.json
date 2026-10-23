@@ -59,7 +59,14 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "SiGAV Móvil usa la cámara para escanear la cédula del ciudadano y la placa del vehículo."
+        }
+      ],
+      "./plugins/with-mlkit-ocr"
     ],
     "experiments": {
       "typedRoutes": true,

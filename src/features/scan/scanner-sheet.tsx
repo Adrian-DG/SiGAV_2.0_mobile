@@ -48,6 +48,9 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
   const [estado, setEstado] = useState<Estado>({ tag: 'camara' });
   const [error, setError] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
+  // Guardar reduce la foto (unos cientos de ms): un segundo toque no debe guardarla otra vez
+  const guardandoRef = useRef(false);
+  const [guardando, setGuardando] = useState(false);
 
   function close() {
     setEstado({ tag: 'camara' });
@@ -87,12 +90,18 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
   }
 
   /** Conserva la foto (copia persistente) y devuelve lo elegido. */
-  function terminar(uri: string, datos: T | null, linea: string | null) {
+  async function terminar(uri: string, datos: T | null, linea: string | null) {
+    if (guardandoRef.current) return;
+    guardandoRef.current = true;
+    setGuardando(true);
     try {
-      onResult({ foto: guardarFoto(uri), datos, linea });
+      onResult({ foto: await guardarFoto(uri), datos, linea });
       close();
     } catch {
       setError('No se pudo guardar la foto en el dispositivo. Intente de nuevo.');
+    } finally {
+      guardandoRef.current = false;
+      setGuardando(false);
     }
   }
 
@@ -143,7 +152,7 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
                     <Text style={styles.datoValor}>{c.valor}</Text>
                   </View>
                 ))}
-                <Button label="Usar estos datos" onPress={() => terminar(estado.uri, lectura.datos, null)} />
+                <Button label="Usar estos datos" loading={guardando} onPress={() => terminar(estado.uri, lectura.datos, null)} />
               </View>
             )}
 
@@ -156,6 +165,7 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
                   <Pressable
                     key={linea.id}
                     accessibilityRole="button"
+                    disabled={guardando}
                     style={({ pressed }) => [styles.linea, pressed && styles.pressed]}
                     onPress={() => terminar(estado.uri, null, linea.texto)}>
                     <Text style={styles.lineaTexto}>{linea.texto}</Text>
@@ -164,8 +174,8 @@ export function ScannerSheet<T>({ visible, titulo, leer, onClose, onResult }: Sc
               </>
             )}
 
-            <Button label="Guardar solo la foto" variant="secondary" onPress={() => terminar(estado.uri, null, null)} />
-            <Button label="Tomar otra foto" variant="ghost" onPress={() => setEstado({ tag: 'camara' })} />
+            <Button label="Guardar solo la foto" variant="secondary" loading={guardando} onPress={() => terminar(estado.uri, null, null)} />
+            <Button label="Tomar otra foto" variant="ghost" disabled={guardando} onPress={() => setEstado({ tag: 'camara' })} />
           </ScrollView>
         )}
       </SafeAreaView>

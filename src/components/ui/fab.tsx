@@ -1,21 +1,24 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Palette } from '@/constants/colors';
 
 type FabProps = {
-  glyph: string;
+  icon: IconName;
+  /** Se muestra junto al ícono: un "+" solo no dice qué hace. */
   label: string;
   onPress: () => void;
 };
 
-export function Fab({ glyph, label, onPress }: FabProps) {
+export function Fab({ icon, label, onPress }: FabProps) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => [styles.fab, pressed && styles.pressed]}>
-      <Text style={styles.glyph}>{glyph}</Text>
+      <Icon name={icon} color={Palette.white} size={26} />
+      <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
 }
@@ -25,12 +28,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 20,
     bottom: 24,
-    width: 58,
-    height: 58,
+    minHeight: 58,
+    paddingLeft: 18,
+    paddingRight: 22,
     borderRadius: 29,
-    backgroundColor: Palette.accent[500],
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
+    // naranja 700: texto blanco con contraste AA
+    backgroundColor: Palette.accent[700],
     shadowColor: Palette.black,
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -40,10 +46,9 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
   },
-  glyph: {
-    fontSize: 26,
+  label: {
+    fontSize: 17,
     color: Palette.white,
-    fontWeight: '700',
-    lineHeight: 28,
+    fontWeight: '800',
   },
 });

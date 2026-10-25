@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -62,11 +62,11 @@ type InvolucradoEditorProps = {
   etiquetaVehiculo: (vehiculoKey: string) => string;
   tipos: TipoEventoItem[];
   onChange: (value: InvolucradoForm) => void;
-  /** `otro`: al guardar, abrir enseguida otra persona (en el mismo vehículo, si iba en uno). */
-  onSave: (otro: boolean) => void;
-  onCancel: () => void;
+  /** Tras intentar guardar: los errores se muestran y se actualizan al corregir. */
+  mostrarErrores: boolean;
 };
 
+/** Datos de la persona y lo que pasó con ella. Guardar y cancelar están en la barra del formulario. */
 export function InvolucradoEditor({
   token,
   value,
@@ -74,16 +74,18 @@ export function InvolucradoEditor({
   etiquetaVehiculo,
   tipos,
   onChange,
-  onSave,
-  onCancel,
+  mostrarErrores,
 }: InvolucradoEditorProps) {
   const [busqueda, setBusqueda] = useState<Busqueda>({ estado: 'idle' });
-  const [intentoGuardar, setIntentoGuardar] = useState(false);
   const [escaneando, setEscaneando] = useState(false);
+  // La tecla "siguiente" del teclado pasa de un campo al otro sin cerrarlo
+  const apellidoRef = useRef<TextInput>(null);
+  const edadRef = useRef<TextInput>(null);
+  const telefonoRef = useRef<TextInput>(null);
 
   const nacionalidades = useCatalogo('nacionalidades', listarNacionalidades);
 
-  const errores = intentoGuardar ? validarInvolucrado(value, contexto) : {};
+  const errores = mostrarErrores ? validarInvolucrado(value, contexto) : {};
   const rolAnterior = ROL_ANTERIOR[value.rol];
   const opcionesRol = rolAnterior ? [...ROL_OPTIONS, { label: rolAnterior, value: value.rol }] : ROL_OPTIONS;
 
@@ -113,142 +115,149 @@ export function InvolucradoEditor({
     }
   }
 
-  function guardar(otro: boolean) {
-    setIntentoGuardar(true);
-    if (Object.keys(validarInvolucrado(value, contexto)).length === 0) onSave(otro);
-  }
-
   return (
-    <Card style={styles.card}>
-      <Text style={styles.sectionTitle}>Persona</Text>
-      <SegmentedControl options={opcionesRol} value={value.rol} onChange={(rol) => onChange(cambiarRol(value, rol))} />
+    <>
+      <Card style={styles.card}>
+        <Text style={styles.fieldLabel}>¿Quién es?</Text>
+        <SegmentedControl options={opcionesRol} value={value.rol} onChange={(rol) => onChange(cambiarRol(value, rol))} />
 
-      {rolAdmiteVehiculo(value.rol) && (
-        <SelectField
-          label={rolRequiereVehiculo(value.rol) ? 'Vehículo en que iba' : 'Vehículo en que iba (opcional)'}
-          placeholder={contexto.vehiculos.length ? 'Seleccionar' : 'Agregue primero el vehículo'}
-          options={opcionesVehiculo}
-          disabled={contexto.vehiculos.length === 0}
-          value={vehiculoSeleccionado}
-          onChange={(id) => onChange({ ...value, vehiculoKey: id ? (contexto.vehiculos[id - 1]?.key ?? null) : null })}
-          otherLabel={rolRequiereVehiculo(value.rol) ? undefined : 'Sin vehículo'}
-          onSelectOther={rolRequiereVehiculo(value.rol) ? undefined : () => onChange({ ...value, vehiculoKey: null })}
-          errorText={errores.vehiculo}
+        {rolAdmiteVehiculo(value.rol) && (
+          <SelectField
+            label={rolRequiereVehiculo(value.rol) ? 'Vehículo en que iba' : 'Vehículo en que iba (opcional)'}
+            placeholder={contexto.vehiculos.length ? 'Seleccionar' : 'Agregue primero el vehículo'}
+            options={opcionesVehiculo}
+            disabled={contexto.vehiculos.length === 0}
+            value={vehiculoSeleccionado}
+            onChange={(id) => onChange({ ...value, vehiculoKey: id ? (contexto.vehiculos[id - 1]?.key ?? null) : null })}
+            otherLabel={rolRequiereVehiculo(value.rol) ? undefined : 'Sin vehículo'}
+            onSelectOther={rolRequiereVehiculo(value.rol) ? undefined : () => onChange({ ...value, vehiculoKey: null })}
+            errorText={errores.vehiculo}
+          />
+        )}
+
+        {/* Escanear es lo más rápido: lee la cédula, guarda la foto como evidencia y busca a la persona */}
+        {!value.fotoIdentificacion && (
+          <Button label="Escanear cédula" icon="camara" variant="outline" onPress={() => setEscaneando(true)} />
+        )}
+
+        <TextField
+          label="Cédula o pasaporte"
+          placeholder="000-0000000-0"
+          value={value.identificacion}
+          onChangeText={(text) => {
+            const identificacion = formatIdentificacion(text);
+            onChange({ ...value, identificacion, origen: null });
+            setBusqueda({ estado: 'idle' });
+          }}
+          onBlur={() => buscarPersona()}
+          onSubmitEditing={() => buscarPersona()}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={IDENTIFICACION_MAX_LENGTH + 2}
+          returnKeyType="search"
+          errorText={errores.identificacion}
+          // Al salir del campo se buscan solos los datos conocidos de la persona
+          rightAdornment={busqueda.estado === 'buscando' ? <ActivityIndicator color={Palette.primary[500]} /> : undefined}
         />
-      )}
+        <EstadoBusqueda busqueda={busqueda} />
 
-      <TextField
-        label="Cédula o pasaporte"
-        placeholder="000-0000000-0"
-        value={value.identificacion}
-        onChangeText={(text) => {
-          const identificacion = formatIdentificacion(text);
-          onChange({ ...value, identificacion, origen: null });
-          setBusqueda({ estado: 'idle' });
-        }}
-        onBlur={() => buscarPersona()}
-        onSubmitEditing={() => buscarPersona()}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        maxLength={IDENTIFICACION_MAX_LENGTH + 2}
-        errorText={errores.identificacion}
-        rightAdornment={
-          <View style={styles.adornos}>
-            <Button label="Escanear" variant="ghost" onPress={() => setEscaneando(true)} />
-            <Button
-              label="Buscar"
-              variant="ghost"
-              loading={busqueda.estado === 'buscando'}
-              disabled={!puedeBuscarIdentificacion(value.identificacion)}
-              onPress={() => buscarPersona()}
+        <FotoEvidenciaFila
+          etiqueta="Foto de la cédula"
+          foto={value.fotoIdentificacion}
+          onTomar={() => setEscaneando(true)}
+          onQuitar={() => onChange({ ...value, fotoIdentificacion: null })}
+        />
+
+        <ScannerSheet<DatosCedula>
+          visible={escaneando}
+          titulo="cédula"
+          leer={lecturaCedula}
+          onClose={() => setEscaneando(false)}
+          onResult={({ foto, datos, linea }) => {
+            const persona = { ...conDatosDeCedula(value, datos, linea), fotoIdentificacion: foto };
+            onChange(persona);
+            setBusqueda({ estado: 'idle' });
+            // Con la cédula leída se buscan enseguida los datos conocidos (teléfono, nacionalidad...)
+            if (persona.identificacion !== value.identificacion) void buscarPersona(persona);
+          }}
+        />
+
+        <View style={styles.row}>
+          <View style={styles.flex}>
+            <TextField
+              label="Nombre"
+              value={value.nombre}
+              onChangeText={(nombre) => onChange({ ...value, nombre })}
+              autoCapitalize="words"
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => apellidoRef.current?.focus()}
             />
           </View>
-        }
-      />
-      <EstadoBusqueda busqueda={busqueda} />
+          <View style={styles.flex}>
+            <TextField
+              ref={apellidoRef}
+              label="Apellido"
+              value={value.apellido}
+              onChangeText={(apellido) => onChange({ ...value, apellido })}
+              autoCapitalize="words"
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => edadRef.current?.focus()}
+            />
+          </View>
+        </View>
+        <Text style={styles.fieldLabel}>Sexo</Text>
+        <SegmentedControl options={SEXO_OPTIONS} value={value.sexo} onChange={(sexo) => onChange({ ...value, sexo })} />
+        <View style={styles.row}>
+          <View style={styles.edad}>
+            <TextField
+              ref={edadRef}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => telefonoRef.current?.focus()}
+              label="Edad"
+              placeholder="Años"
+              keyboardType="number-pad"
+              maxLength={3}
+              value={value.edad}
+              onChangeText={(edad) => onChange({ ...value, edad: formatEdad(edad) })}
+              errorText={errores.edad}
+            />
+          </View>
+          <View style={styles.flex}>
+            <TextField
+              ref={telefonoRef}
+              label="Teléfono"
+              placeholder="809-000-0000"
+              keyboardType="phone-pad"
+              value={value.telefono}
+              onChangeText={(telefono) => onChange({ ...value, telefono })}
+            />
+          </View>
+        </View>
+        <SelectField
+          label="Nacionalidad"
+          options={nacionalidades.items}
+          loading={nacionalidades.cargando}
+          value={value.nacionalidadId}
+          onChange={(nacionalidadId) => onChange({ ...value, nacionalidadId })}
+        />
 
-      <FotoEvidenciaFila
-        etiqueta="Foto de la cédula"
-        foto={value.fotoIdentificacion}
-        onTomar={() => setEscaneando(true)}
-        onQuitar={() => onChange({ ...value, fotoIdentificacion: null })}
-      />
+      </Card>
 
-      <ScannerSheet<DatosCedula>
-        visible={escaneando}
-        titulo="cédula"
-        leer={lecturaCedula}
-        onClose={() => setEscaneando(false)}
-        onResult={({ foto, datos, linea }) => {
-          const persona = { ...conDatosDeCedula(value, datos, linea), fotoIdentificacion: foto };
-          onChange(persona);
-          setBusqueda({ estado: 'idle' });
-          // Con la cédula leída se buscan enseguida los datos conocidos (teléfono, nacionalidad...)
-          if (persona.identificacion !== value.identificacion) void buscarPersona(persona);
-        }}
-      />
-
-      <View style={styles.row}>
-        <View style={styles.flex}>
-          <TextField label="Nombre" value={value.nombre} onChangeText={(nombre) => onChange({ ...value, nombre })} />
-        </View>
-        <View style={styles.flex}>
-          <TextField label="Apellido" value={value.apellido} onChangeText={(apellido) => onChange({ ...value, apellido })} />
-        </View>
-      </View>
-      <Text style={styles.fieldLabel}>Sexo</Text>
-      <SegmentedControl options={SEXO_OPTIONS} value={value.sexo} onChange={(sexo) => onChange({ ...value, sexo })} />
-      <View style={styles.row}>
-        <View style={styles.edad}>
-          <TextField
-            label="Edad"
-            placeholder="Años"
-            keyboardType="number-pad"
-            maxLength={3}
-            value={value.edad}
-            onChangeText={(edad) => onChange({ ...value, edad: formatEdad(edad) })}
-            errorText={errores.edad}
-          />
-        </View>
-        <View style={styles.flex}>
-          <TextField
-            label="Teléfono"
-            placeholder="809-000-0000"
-            keyboardType="phone-pad"
-            value={value.telefono}
-            onChangeText={(telefono) => onChange({ ...value, telefono })}
-          />
-        </View>
-      </View>
-      <SelectField
-        label="Nacionalidad"
-        options={nacionalidades.items}
-        loading={nacionalidades.cargando}
-        value={value.nacionalidadId}
-        onChange={(nacionalidadId) => onChange({ ...value, nacionalidadId })}
-      />
-
-      <View style={styles.separador} />
-      <TiposEventoSelector
-        tipos={tipos}
-        label={requiereTiposPropios(value) ? '¿Qué se le atendió?' : '¿Qué se le atendió? (opcional)'}
-        ayuda={requiereTiposPropios(value) ? undefined : 'Si no marca nada, comparte lo atendido al vehículo en que iba.'}
-        value={value.tipoEventoIds}
-        onChange={(tipoEventoIds) => onChange({ ...value, tipoEventoIds })}
-        atajos={vehiculo ? [{ label: `Igual que ${etiquetaVehiculo(vehiculo.key).toLowerCase()}`, ids: vehiculo.tipoEventoIds }] : []}
-        errorText={errores.tipos}
-      />
-
-      <Button label="Guardar persona" onPress={() => guardar(false)} />
-      <View style={styles.row}>
-        <View style={styles.flex}>
-          <Button label="Cancelar" variant="ghost" onPress={onCancel} />
-        </View>
-        <View style={styles.flex}>
-          <Button label="Guardar y agregar otra" variant="secondary" onPress={() => guardar(true)} />
-        </View>
-      </View>
-    </Card>
+      <Card style={[styles.card, !!errores.tipos && styles.cardError]}>
+        <TiposEventoSelector
+          tipos={tipos}
+          label={requiereTiposPropios(value) ? '¿Qué pasó con esta persona?' : '¿Qué pasó con esta persona? (opcional)'}
+          ayuda={requiereTiposPropios(value) ? undefined : 'Si no marca nada, comparte lo atendido al vehículo en que iba.'}
+          value={value.tipoEventoIds}
+          onChange={(tipoEventoIds) => onChange({ ...value, tipoEventoIds })}
+          atajos={vehiculo ? [{ label: `Igual que ${etiquetaVehiculo(vehiculo.key).toLowerCase()}`, ids: vehiculo.tipoEventoIds }] : []}
+          errorText={errores.tipos}
+        />
+      </Card>
+    </>
   );
 }
 
@@ -285,12 +294,10 @@ function conDatosDeCedula(inv: InvolucradoForm, datos: DatosCedula | null, linea
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
-  adornos: { flexDirection: 'row' },
+  card: { gap: 14 },
+  cardError: { borderColor: Palette.danger[500], borderWidth: 2 },
+  fieldLabel: { fontSize: 15, fontWeight: '600', color: Palette.neutral[700], marginBottom: -6 },
   row: { flexDirection: 'row', gap: 10 },
   flex: { flex: 1 },
   edad: { width: 96 },
-  separador: { height: 1, backgroundColor: Palette.neutral[200] },
 });

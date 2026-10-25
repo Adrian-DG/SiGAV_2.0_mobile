@@ -1,17 +1,18 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Palette } from '@/constants/colors';
 
 type EmptyStateProps = {
-  glyph: string;
+  icon: IconName;
   title: string;
   description?: string;
 };
 
-export function EmptyState({ glyph, title, description }: EmptyStateProps) {
+export function EmptyState({ icon, title, description }: EmptyStateProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.glyph}>{glyph}</Text>
+      <Icon name={icon} color={Palette.neutral[400]} size={40} style={styles.icon} />
       <Text style={styles.title}>{title}</Text>
       {description && <Text style={styles.description}>{description}</Text>}
     </View>
@@ -25,20 +26,19 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     paddingHorizontal: 24,
   },
-  glyph: {
-    fontSize: 32,
+  icon: {
     marginBottom: 4,
   },
   title: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: Palette.neutral[700],
     textAlign: 'center',
   },
   description: {
-    fontSize: 13,
-    color: Palette.neutral[500],
+    fontSize: 14,
+    color: Palette.neutral[600],
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 20,
   },
 });

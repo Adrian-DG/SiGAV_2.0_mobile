@@ -29,7 +29,9 @@ export function SegmentedControl<T extends string | number>({
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
             style={[styles.segment, selected && styles.segmentSelected]}>
-            <Text style={[styles.label, selected && styles.labelSelected]}>{option.label}</Text>
+            <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1} adjustsFontSizeToFit>
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -47,9 +49,12 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: 8,
+    paddingHorizontal: 4,
     borderRadius: 9,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   segmentSelected: {
     backgroundColor: Palette.white,
@@ -60,11 +65,12 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   label: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-    color: Palette.neutral[500],
+    color: Palette.neutral[600],
   },
   labelSelected: {
     color: Palette.primary[600],
+    fontWeight: '800',
   },
 });

@@ -22,6 +22,7 @@ export default function NewEventScreen() {
       inicial={inicial}
       capturarUbicacion
       textoGuardar="Guardar evento"
+      mensajeGuardado="Evento guardado en «En curso». Ciérrelo y envíelo al terminar."
       onGuardar={async (form, tipos) => {
         if (!sesion) throw new Error('La sesión no tiene agente o unidad: vuelva a iniciar sesión.');
         await guardarEventoLocal(db, form, sesion, tipos);

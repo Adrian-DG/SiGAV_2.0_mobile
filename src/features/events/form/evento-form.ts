@@ -327,7 +327,7 @@ export function validarVehiculo(v: VehiculoForm, contexto: ContextoEvento, prefi
   const placa = formatPlaca(v.placa);
 
   if (!vehiculoTieneDatos(v)) errors.vehiculo = 'Registre al menos un dato del vehículo (placa, tipo, marca, modelo o color).';
-  if (v.tipoEventoIds.length === 0) errors.tipos = 'Seleccione qué se le atendió al vehículo.';
+  if (v.tipoEventoIds.length === 0) errors.tipos = 'Indique qué pasó con el vehículo.';
 
   const analisis = analizarPlaca(placa, v.placaNoEstandar, v.tipoVehiculoId, prefijos);
   if (placaBloquea(analisis) && analisis.estado === 'formato_invalido')
@@ -363,7 +363,7 @@ export function validarInvolucrado(inv: InvolucradoForm, contexto: ContextoEvent
   }
 
   if (requiereTiposPropios(inv) && inv.tipoEventoIds.length === 0)
-    errors.tipos = 'Seleccione qué se le atendió a la persona.';
+    errors.tipos = 'Indique qué pasó con la persona.';
 
   return errors;
 }
@@ -372,18 +372,21 @@ export function validarInvolucrado(inv: InvolucradoForm, contexto: ContextoEvent
 export function validarEvento(form: EventoForm, prefijos: PrefijoPlacaItem[] = []): FormErrors {
   const errors: FormErrors = {};
 
-  if (!form.ubicacion) errors.ubicacion = 'Aún no se ha obtenido la ubicación del evento.';
+  if (!form.ubicacion) errors.ubicacion = 'Falta la ubicación del GPS.';
   if (!form.municipioId) errors.municipio = 'Seleccione el municipio.';
   if (tiposDelEvento(form).length === 0)
-    errors.tipos = 'Agregue los vehículos o personas atendidos con sus tipos de evento, o indique otro tipo atendido en el lugar.';
+    errors.tipos = 'Agregue un vehículo o un peatón con lo que pasó, o algo atendido en la vía.';
   if (form.vehiculos.length > MAX_VEHICULOS) errors.vehiculos = `No se pueden registrar más de ${MAX_VEHICULOS} vehículos.`;
   if (form.involucrados.length > MAX_PERSONAS) errors.personas = `No se pueden registrar más de ${MAX_PERSONAS} personas.`;
 
+  // El primer problema de cada vehículo y persona, para decirle al agente qué corregir
   form.vehiculos.forEach((v) => {
-    if (Object.keys(validarVehiculo(v, form, prefijos)).length > 0) errors[`vehiculo.${v.key}`] = 'Revise los datos de este vehículo.';
+    const primero = Object.values(validarVehiculo(v, form, prefijos))[0];
+    if (primero) errors[`vehiculo.${v.key}`] = primero;
   });
   form.involucrados.forEach((inv) => {
-    if (Object.keys(validarInvolucrado(inv, form)).length > 0) errors[`involucrado.${inv.key}`] = 'Revise los datos de esta persona.';
+    const primero = Object.values(validarInvolucrado(inv, form))[0];
+    if (primero) errors[`involucrado.${inv.key}`] = primero;
   });
 
   return errors;

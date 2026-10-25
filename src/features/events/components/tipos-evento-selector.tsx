@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Chip } from '@/components/ui/chip';
+import { Icon } from '@/components/ui/icon';
 import { Palette } from '@/constants/colors';
 import type { TipoEventoItem } from '@/features/catalogos/api';
 
@@ -43,7 +44,8 @@ export function TiposEventoSelector({ tipos, value, onChange, label, ayuda, erro
               accessibilityHint="Agrega esos tipos a la selección"
               onPress={() => onChange([...new Set([...value, ...a.ids])])}
               style={({ pressed }) => [styles.atajo, pressed && styles.pressed]}>
-              <Text style={styles.atajoTexto}>⧉ {a.label}</Text>
+              <Icon name="copiar" color={Palette.primary[700]} size={18} />
+              <Text style={styles.atajoTexto}>{a.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -78,15 +80,19 @@ export function nombresTipos(tipos: TipoEventoItem[], ids: number[]): string[] {
 }
 
 const styles = StyleSheet.create({
-  contenedor: { gap: 8 },
-  label: { fontSize: 14, fontWeight: '700', color: Palette.neutral[900] },
-  ayuda: { fontSize: 13, color: Palette.neutral[600] },
-  grupo: { gap: 6 },
-  grupoTitulo: { fontSize: 12, fontWeight: '700', color: Palette.neutral[600], textTransform: 'uppercase', letterSpacing: 0.5 },
+  contenedor: { gap: 10 },
+  label: { fontSize: 17, fontWeight: '800', color: Palette.neutral[900] },
+  ayuda: { fontSize: 14, color: Palette.neutral[600] },
+  grupo: { gap: 8 },
+  grupoTitulo: { fontSize: 13, fontWeight: '800', color: Palette.neutral[600], textTransform: 'uppercase', letterSpacing: 0.5 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   atajos: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   atajo: {
-    paddingVertical: 7,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
@@ -94,7 +100,7 @@ const styles = StyleSheet.create({
     borderColor: Palette.primary[300],
     backgroundColor: Palette.primary[50],
   },
-  atajoTexto: { fontSize: 13, fontWeight: '700', color: Palette.primary[700] },
+  atajoTexto: { fontSize: 15, fontWeight: '700', color: Palette.primary[700] },
   pressed: { opacity: 0.8 },
-  error: { fontSize: 13, color: Palette.danger[600], fontWeight: '600' },
+  error: { fontSize: 14, color: Palette.danger[600], fontWeight: '600' },
 });

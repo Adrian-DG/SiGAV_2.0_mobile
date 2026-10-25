@@ -167,7 +167,7 @@ const OPCIONES: Location.LocationTaskOptions = {
   showsBackgroundLocationIndicator: true,
   // Android: notificación fija mientras se comparte la ubicación
   foregroundService: {
-    notificationTitle: 'SiGAV Móvil',
+    notificationTitle: 'SiGAV',
     notificationBody: 'Compartiendo la ubicación de la unidad durante el turno.',
     notificationColor: '#05539B',
     killServiceOnDestroy: false,

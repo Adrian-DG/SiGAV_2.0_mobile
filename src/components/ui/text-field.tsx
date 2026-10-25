@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Palette } from '@/constants/colors';
@@ -6,6 +7,8 @@ type TextFieldProps = TextInputProps & {
   label: string;
   errorText?: string | null;
   rightAdornment?: React.ReactNode;
+  /** Para pasar el foco al siguiente campo con la tecla "siguiente" del teclado. */
+  ref?: Ref<TextInput>;
 };
 
 export function TextField({ label, errorText, rightAdornment, style, ...rest }: TextFieldProps) {
@@ -16,7 +19,7 @@ export function TextField({ label, errorText, rightAdornment, style, ...rest }: 
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.inputRow, hasError && styles.inputRowError]}>
         <TextInput
-          placeholderTextColor={Palette.neutral[400]}
+          placeholderTextColor={Palette.neutral[500]}
           style={[styles.input, style]}
           {...rest}
         />
@@ -32,9 +35,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-    color: Palette.neutral[600],
+    color: Palette.neutral[700],
   },
   inputRow: {
     flexDirection: 'row',
@@ -47,6 +50,7 @@ const styles = StyleSheet.create({
   },
   inputRowError: {
     borderColor: Palette.danger[500],
+    borderWidth: 2,
   },
   input: {
     flex: 1,
@@ -55,7 +59,8 @@ const styles = StyleSheet.create({
     color: Palette.neutral[900],
   },
   errorText: {
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: '600',
     color: Palette.danger[600],
   },
 });

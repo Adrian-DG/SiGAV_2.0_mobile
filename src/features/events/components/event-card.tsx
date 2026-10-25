@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 48,
   },
   details: {
     borderTopWidth: 1,

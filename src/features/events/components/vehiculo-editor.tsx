@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,7 +37,6 @@ import { TiposEventoSelector, type AtajoTipos } from './tipos-evento-selector';
 
 type VehiculoEditorProps = {
   token: string;
-  titulo: string;
   value: VehiculoForm;
   /** Vehículos y personas del evento (para no repetir la placa). */
   contexto: ContextoEvento;
@@ -45,21 +44,20 @@ type VehiculoEditorProps = {
   /** Copiar los tipos de otro vehículo del evento. */
   atajosTipos?: AtajoTipos[];
   onChange: (value: VehiculoForm) => void;
-  /** `otro`: al guardar, abrir enseguida un vehículo nuevo. */
-  onSave: (otro: boolean) => void;
-  onCancel: () => void;
+  /** Tras intentar guardar: los errores se muestran y se actualizan al corregir. */
+  mostrarErrores: boolean;
 };
 
 /** "Desconocido" no contradice ningún prefijo de placa. */
 const esComodin = (nombre: string) => /desconocid/i.test(nombre);
 
-export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTipos, onChange, onSave, onCancel }: VehiculoEditorProps) {
+/** Datos del vehículo y lo que pasó con él. Guardar y cancelar están en la barra del formulario. */
+export function VehiculoEditor({ token, value, contexto, tipos, atajosTipos, onChange, mostrarErrores }: VehiculoEditorProps) {
   const [busqueda, setBusqueda] = useState<Busqueda>({ estado: 'idle' });
   // El agente eligió "no está en la lista": se muestra el campo de texto libre
   const [marcaManual, setMarcaManual] = useState(!!value.marcaTexto);
   const [modeloManual, setModeloManual] = useState(!!value.modeloTexto);
   const [colorManual, setColorManual] = useState(!!value.colorTexto);
-  const [intentoGuardar, setIntentoGuardar] = useState(false);
   const [escaneando, setEscaneando] = useState(false);
 
   const prefijos = useCatalogo('prefijos-placa', listarPrefijosPlaca);
@@ -71,7 +69,7 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
 
   const comodines = tiposVehiculo.items.filter((t) => esComodin(t.nombre)).map((t) => t.id);
   const analisis = analizarPlaca(value.placa, value.placaNoEstandar, value.tipoVehiculoId, prefijos.items, comodines);
-  const errores = intentoGuardar ? validarVehiculo(value, contexto, prefijos.items) : {};
+  const errores = mostrarErrores ? validarVehiculo(value, contexto, prefijos.items) : {};
   const set = (cambios: Partial<VehiculoForm>) => onChange({ ...value, ...cambios });
 
   const nombreTipo = (id: number) => tiposVehiculo.items.find((t) => t.id === id)?.nombre ?? `#${id}`;
@@ -116,202 +114,182 @@ export function VehiculoEditor({ token, titulo, value, contexto, tipos, atajosTi
     }
   }
 
-  function guardar(otro: boolean) {
-    setIntentoGuardar(true);
-    if (Object.keys(validarVehiculo(value, contexto, prefijos.items)).length === 0) onSave(otro);
-  }
-
   return (
-    <Card style={styles.card}>
-      <Text style={styles.sectionTitle}>{titulo}</Text>
+    <>
+      <Card style={styles.card}>
+        {/* Escanear es lo más rápido: lee la placa, guarda la foto como evidencia y busca el vehículo */}
+        {!value.fotoPlaca && <Button label="Escanear placa" icon="camara" variant="outline" onPress={() => setEscaneando(true)} />}
 
-      <TextField
-        label="Placa"
-        placeholder="A123456"
-        value={value.placa}
-        onChangeText={(text) => {
-          cambiarPlaca({ placa: formatPlaca(text), placaNoEstandar: value.placaNoEstandar });
-          setBusqueda({ estado: 'idle' });
-        }}
-        onBlur={() => buscarPlaca()}
-        onSubmitEditing={() => buscarPlaca()}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        maxLength={PLACA_MAX_LENGTH}
-        errorText={errores.placa}
-        rightAdornment={
-          <View style={styles.adornos}>
-            <Button label="Escanear" variant="ghost" onPress={() => setEscaneando(true)} />
-            <Button
-              label="Buscar"
-              variant="ghost"
-              loading={busqueda.estado === 'buscando'}
-              disabled={!puedeBuscarPlaca(value.placa)}
-              onPress={() => buscarPlaca()}
+        <TextField
+          label="Placa"
+          placeholder="A123456"
+          value={value.placa}
+          onChangeText={(text) => {
+            cambiarPlaca({ placa: formatPlaca(text), placaNoEstandar: value.placaNoEstandar });
+            setBusqueda({ estado: 'idle' });
+          }}
+          onBlur={() => buscarPlaca()}
+          onSubmitEditing={() => buscarPlaca()}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          maxLength={PLACA_MAX_LENGTH}
+          returnKeyType="search"
+          errorText={errores.placa}
+          // Al salir del campo se buscan solos los datos conocidos del vehículo
+          rightAdornment={busqueda.estado === 'buscando' ? <ActivityIndicator color={Palette.primary[500]} /> : undefined}
+        />
+        {!errores.placa && <MensajePlaca analisis={analisis} nombreTipo={nombreTipo} />}
+        <EstadoBusqueda busqueda={busqueda} />
+
+        <FotoEvidenciaFila
+          etiqueta="Foto de la placa"
+          foto={value.fotoPlaca}
+          onTomar={() => setEscaneando(true)}
+          onQuitar={() => set({ fotoPlaca: null })}
+        />
+
+        <ScannerSheet<string | null>
+          visible={escaneando}
+          titulo="placa"
+          leer={(lineas) => {
+            const placa = leerPlaca(lineas, prefijos.items) ?? null;
+            return { datos: placa, campos: placa ? [{ etiqueta: 'Placa', valor: placa }] : [] };
+          }}
+          onClose={() => setEscaneando(false)}
+          onResult={({ foto, datos, linea }) => {
+            const placa = datos ?? (linea ? formatPlaca(linea) : null);
+            const vehiculo = { ...(placa ? conPlaca({ placa, placaNoEstandar: value.placaNoEstandar }) : value), fotoPlaca: foto };
+            onChange(vehiculo);
+            setBusqueda({ estado: 'idle' });
+            // Con la placa leída se buscan enseguida los datos conocidos del vehículo
+            if (placa) void buscarPlaca(vehiculo);
+          }}
+        />
+
+        {!!value.placa && (
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>Placa extranjera, temporal o ilegible</Text>
+            <Switch
+              accessibilityLabel="Placa extranjera, temporal o ilegible"
+              value={value.placaNoEstandar}
+              onValueChange={(placaNoEstandar) => cambiarPlaca({ placa: value.placa, placaNoEstandar })}
             />
           </View>
-        }
-      />
-      {!errores.placa && <MensajePlaca analisis={analisis} nombreTipo={nombreTipo} />}
-      <EstadoBusqueda busqueda={busqueda} />
+        )}
 
-      <FotoEvidenciaFila
-        etiqueta="Foto de la placa"
-        foto={value.fotoPlaca}
-        onTomar={() => setEscaneando(true)}
-        onQuitar={() => set({ fotoPlaca: null })}
-      />
+        {tiposDePlaca.length > 1 && (
+          <View style={styles.sugeridos}>
+            <Text style={styles.switchLabel}>Según la placa {prefijo?.prefijo}:</Text>
+            <View style={styles.chips}>
+              {tiposDePlaca.map((id) => (
+                <Chip key={id} label={nombreTipo(id)} selected={value.tipoVehiculoId === id} onPress={() => set({ tipoVehiculoId: id })} />
+              ))}
+            </View>
+          </View>
+        )}
+        <SelectField
+          label="Tipo de vehículo"
+          options={tiposVehiculo.items}
+          loading={tiposVehiculo.cargando}
+          value={value.tipoVehiculoId}
+          onChange={(tipoVehiculoId) => set({ tipoVehiculoId })}
+        />
 
-      <ScannerSheet<string | null>
-        visible={escaneando}
-        titulo="placa"
-        leer={(lineas) => {
-          const placa = leerPlaca(lineas, prefijos.items) ?? null;
-          return { datos: placa, campos: placa ? [{ etiqueta: 'Placa', valor: placa }] : [] };
-        }}
-        onClose={() => setEscaneando(false)}
-        onResult={({ foto, datos, linea }) => {
-          const placa = datos ?? (linea ? formatPlaca(linea) : null);
-          const vehiculo = { ...(placa ? conPlaca({ placa, placaNoEstandar: value.placaNoEstandar }) : value), fotoPlaca: foto };
-          onChange(vehiculo);
-          setBusqueda({ estado: 'idle' });
-          // Con la placa leída se buscan enseguida los datos conocidos del vehículo
-          if (placa) void buscarPlaca(vehiculo);
-        }}
-      />
-
-      {!!value.placa && (
-        <View style={styles.switchRow}>
-          <Text style={styles.switchLabel}>Placa extranjera, temporal o ilegible</Text>
-          <Switch
-            accessibilityLabel="Placa extranjera, temporal o ilegible"
-            value={value.placaNoEstandar}
-            onValueChange={(placaNoEstandar) => cambiarPlaca({ placa: value.placa, placaNoEstandar })}
+        {marcaManual ? (
+          <TextField
+            label="Marca (no está en la lista)"
+            value={value.marcaTexto}
+            onChangeText={(marcaTexto) => set({ marcaTexto })}
+            rightAdornment={
+              <Button
+                label="Lista"
+                variant="ghost"
+                onPress={() => {
+                  setMarcaManual(false);
+                  set({ marcaTexto: '' });
+                }}
+              />
+            }
           />
-        </View>
-      )}
+        ) : (
+          <SelectField
+            label="Marca"
+            options={marcas.items}
+            loading={marcas.cargando}
+            value={value.marcaId}
+            onChange={(id) => set({ marcaId: id, modeloId: null })}
+            otherLabel="No está en la lista: escribir la marca"
+            onSelectOther={() => {
+              setMarcaManual(true);
+              setModeloManual(true);
+              set({ marcaId: null, modeloId: null });
+            }}
+          />
+        )}
 
-      {tiposDePlaca.length > 1 && (
-        <View style={styles.sugeridos}>
-          <Text style={styles.switchLabel}>Según la placa {prefijo?.prefijo}:</Text>
-          <View style={styles.chips}>
-            {tiposDePlaca.map((id) => (
-              <Chip key={id} label={nombreTipo(id)} selected={value.tipoVehiculoId === id} onPress={() => set({ tipoVehiculoId: id })} />
-            ))}
-          </View>
-        </View>
-      )}
-      <SelectField
-        label="Tipo de vehículo"
-        options={tiposVehiculo.items}
-        loading={tiposVehiculo.cargando}
-        value={value.tipoVehiculoId}
-        onChange={(tipoVehiculoId) => set({ tipoVehiculoId })}
-      />
+        {modeloManual || marcaManual ? (
+          <TextField label="Modelo" value={value.modeloTexto} onChangeText={(modeloTexto) => set({ modeloTexto })} />
+        ) : (
+          <SelectField
+            label="Modelo"
+            placeholder={marcaId ? 'Seleccionar' : 'Elija primero la marca'}
+            options={modelos.items}
+            loading={modelos.cargando}
+            disabled={!marcaId}
+            value={value.modeloId}
+            onChange={(modeloId) => set({ modeloId })}
+            otherLabel="No está en la lista: escribir el modelo"
+            onSelectOther={() => {
+              setModeloManual(true);
+              set({ modeloId: null });
+            }}
+          />
+        )}
 
-      {marcaManual ? (
-        <TextField
-          label="Marca (no está en la lista)"
-          value={value.marcaTexto}
-          onChangeText={(marcaTexto) => set({ marcaTexto })}
-          rightAdornment={
-            <Button
-              label="Lista"
-              variant="ghost"
-              onPress={() => {
-                setMarcaManual(false);
-                set({ marcaTexto: '' });
-              }}
-            />
-          }
+        {colorManual ? (
+          <TextField
+            label="Color (no está en la lista)"
+            value={value.colorTexto}
+            onChangeText={(colorTexto) => set({ colorTexto })}
+            rightAdornment={
+              <Button
+                label="Lista"
+                variant="ghost"
+                onPress={() => {
+                  setColorManual(false);
+                  set({ colorTexto: '' });
+                }}
+              />
+            }
+          />
+        ) : (
+          <SelectField
+            label="Color"
+            options={colores.items}
+            loading={colores.cargando}
+            value={value.colorId}
+            onChange={(colorId) => set({ colorId })}
+            otherLabel="No está en la lista: escribir el color"
+            onSelectOther={() => {
+              setColorManual(true);
+              set({ colorId: null });
+            }}
+          />
+        )}
+        {!!errores.vehiculo && <Text style={styles.error}>{errores.vehiculo}</Text>}
+      </Card>
+
+      <Card style={[styles.card, !!errores.tipos && styles.cardError]}>
+        <TiposEventoSelector
+          tipos={tipos}
+          label="¿Qué pasó con este vehículo?"
+          value={value.tipoEventoIds}
+          onChange={(tipoEventoIds) => set({ tipoEventoIds })}
+          atajos={atajosTipos}
+          errorText={errores.tipos}
         />
-      ) : (
-        <SelectField
-          label="Marca"
-          options={marcas.items}
-          loading={marcas.cargando}
-          value={value.marcaId}
-          onChange={(id) => set({ marcaId: id, modeloId: null })}
-          otherLabel="No está en la lista: escribir la marca"
-          onSelectOther={() => {
-            setMarcaManual(true);
-            setModeloManual(true);
-            set({ marcaId: null, modeloId: null });
-          }}
-        />
-      )}
-
-      {modeloManual || marcaManual ? (
-        <TextField label="Modelo" value={value.modeloTexto} onChangeText={(modeloTexto) => set({ modeloTexto })} />
-      ) : (
-        <SelectField
-          label="Modelo"
-          placeholder={marcaId ? 'Seleccionar' : 'Elija primero la marca'}
-          options={modelos.items}
-          loading={modelos.cargando}
-          disabled={!marcaId}
-          value={value.modeloId}
-          onChange={(modeloId) => set({ modeloId })}
-          otherLabel="No está en la lista: escribir el modelo"
-          onSelectOther={() => {
-            setModeloManual(true);
-            set({ modeloId: null });
-          }}
-        />
-      )}
-
-      {colorManual ? (
-        <TextField
-          label="Color (no está en la lista)"
-          value={value.colorTexto}
-          onChangeText={(colorTexto) => set({ colorTexto })}
-          rightAdornment={
-            <Button
-              label="Lista"
-              variant="ghost"
-              onPress={() => {
-                setColorManual(false);
-                set({ colorTexto: '' });
-              }}
-            />
-          }
-        />
-      ) : (
-        <SelectField
-          label="Color"
-          options={colores.items}
-          loading={colores.cargando}
-          value={value.colorId}
-          onChange={(colorId) => set({ colorId })}
-          otherLabel="No está en la lista: escribir el color"
-          onSelectOther={() => {
-            setColorManual(true);
-            set({ colorId: null });
-          }}
-        />
-      )}
-      {!!errores.vehiculo && <Text style={styles.error}>{errores.vehiculo}</Text>}
-
-      <View style={styles.separador} />
-      <TiposEventoSelector
-        tipos={tipos}
-        label="¿Qué se le atendió?"
-        value={value.tipoEventoIds}
-        onChange={(tipoEventoIds) => set({ tipoEventoIds })}
-        atajos={atajosTipos}
-        errorText={errores.tipos}
-      />
-
-      <Button label="Guardar vehículo" onPress={() => guardar(false)} />
-      <View style={styles.row}>
-        <View style={styles.flex}>
-          <Button label="Cancelar" variant="ghost" onPress={onCancel} />
-        </View>
-        <View style={styles.flex}>
-          <Button label="Guardar y agregar otro" variant="secondary" onPress={() => guardar(true)} />
-        </View>
-      </View>
-    </Card>
+      </Card>
+    </>
   );
 }
 
@@ -340,19 +318,15 @@ function MensajePlaca({ analisis, nombreTipo }: { analisis: AnalisisPlaca; nombr
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
-  adornos: { flexDirection: 'row' },
-  row: { flexDirection: 'row', gap: 10 },
-  flex: { flex: 1 },
-  separador: { height: 1, backgroundColor: Palette.neutral[200] },
+  card: { gap: 14 },
+  cardError: { borderColor: Palette.danger[500], borderWidth: 2 },
   sugeridos: { gap: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  switchLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: Palette.neutral[700] },
-  mensaje: { fontSize: 13, fontWeight: '600', marginTop: -4, color: Palette.neutral[700] },
+  switchLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: Palette.neutral[700] },
+  mensaje: { fontSize: 14, fontWeight: '600', marginTop: -4, color: Palette.neutral[700] },
   ok: { color: Palette.success[700] },
   // warning[900]: contraste AA sobre fondo claro (mismo tono que los avisos del formulario)
   advertencia: { color: Palette.warning[900] },
-  error: { fontSize: 13, color: Palette.danger[600], fontWeight: '600' },
+  error: { fontSize: 14, color: Palette.danger[600], fontWeight: '600' },
 });

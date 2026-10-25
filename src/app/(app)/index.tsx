@@ -37,7 +37,7 @@ import { useNetworkStatus } from '@/hooks/use-network-status';
 const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
 
 const SIN_EVENTOS: Record<EstatusLocal, string> = {
-  en_curso: 'No hay eventos en curso. Registre uno con el botón +.',
+  en_curso: 'No hay eventos en curso. Registre uno con el botón «Nuevo evento».',
   por_enviar: 'No hay eventos cerrados pendientes de enviar.',
   enviado: 'Aún no ha enviado eventos desde este dispositivo.',
 };
@@ -224,8 +224,8 @@ export default function HomeScreen() {
               style={[styles.connectionDot, { backgroundColor: isConnected ? Palette.success[400] : Palette.danger[400] }]}
               accessibilityLabel={isConnected ? 'Conectado' : 'Sin conexión'}
             />
-            <IconButton glyph="⟳" label="Actualizar" onPress={refetchAll} />
-            <IconButton glyph="⏻" label="Cerrar sesión" onPress={() => signOut()} />
+            <IconButton icon="recargar" label="Actualizar" onPress={refetchAll} />
+            <IconButton icon="salir" label="Cerrar sesión" onPress={() => signOut()} />
           </>
         }
       />
@@ -295,16 +295,16 @@ export default function HomeScreen() {
             <ActivityIndicator style={styles.loader} color={Palette.primary[500]} />
           ) : listado.status === 'error' ? (
             <View style={styles.errorState}>
-              <EmptyState glyph="⚠" title="No se pudo cargar" description={listado.message} />
+              <EmptyState icon="alerta" title="No se pudo cargar" description={listado.message} />
               <Button label="Reintentar" variant="ghost" onPress={refetchAll} />
             </View>
           ) : (
-            <EmptyState glyph="▢" title="No hay eventos" description={SIN_EVENTOS[estatus]} />
+            <EmptyState icon="vacio" title="No hay eventos" description={SIN_EVENTOS[estatus]} />
           )
         }
       />
 
-      <Fab glyph="+" label="Registrar evento" onPress={() => router.push('/events/new')} />
+      <Fab icon="agregar" label="Nuevo evento" onPress={() => router.push('/events/new')} />
     </SafeAreaView>
   );
 }

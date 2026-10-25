@@ -53,13 +53,13 @@ export default function EditEventScreen() {
   if (vista.estado !== 'listo') {
     return (
       <SafeAreaView style={styles.flex} edges={['top']}>
-        <ScreenHeader title="Editar evento" right={<IconButton glyph="✕" label="Cerrar" onPress={() => router.back()} />} />
+        <ScreenHeader title="Editar evento" right={<IconButton icon="cerrar" label="Cerrar" onPress={() => router.back()} />} />
         <View style={styles.centro}>
           {vista.estado === 'cargando' ? (
             <ActivityIndicator color={Palette.primary[500]} />
           ) : (
             <>
-              <EmptyState glyph="⚠" title="No disponible" description={vista.mensaje} />
+              <EmptyState icon="alerta" title="No disponible" description={vista.mensaje} />
               <Button label="Volver" variant="ghost" onPress={() => router.back()} />
             </>
           )}
@@ -76,6 +76,7 @@ export default function EditEventScreen() {
       inicial={evento.form}
       capturarUbicacion={false}
       textoGuardar="Guardar cambios"
+      mensajeGuardado="Cambios guardados"
       aviso={
         evento.tipoCierreId != null
           ? `Cerrado como "${evento.tipoCierre ?? `tipo #${evento.tipoCierreId}`}". Puede corregirlo hasta enviarlo.`

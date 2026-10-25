@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
 import { Palette } from '@/constants/colors';
 import type { TipoEventoItem } from '@/features/catalogos/api';
@@ -98,21 +99,26 @@ export function VehiculoTarjeta({
   const [confirmarQuitar, setConfirmarQuitar] = useState(false);
 
   return (
-    <View style={styles.tarjeta}>
+    <View style={[styles.tarjeta, (!!error || ocupantes.some((inv) => !!erroresPersona(inv.key))) && styles.tarjetaError]}>
       <View style={styles.cabecera}>
         <Pressable style={styles.flex} accessibilityRole="button" accessibilityLabel={`Editar vehículo ${indice}`} onPress={onEditar}>
-          <Text style={styles.titulo}>
-            Vehículo {indice} · {vehiculo.placa || 'sin placa'}
-            {vehiculo.placaNoEstandar ? ' (no estándar)' : ''}
-          </Text>
+          <View style={styles.tituloFila}>
+            <Icon name="vehiculo" color={Palette.primary[600]} size={20} />
+            <Text style={styles.titulo}>
+              Vehículo {indice} · {vehiculo.placa || 'sin placa'}
+              {vehiculo.placaNoEstandar ? ' (no estándar)' : ''}
+            </Text>
+            <Icon name="editar" color={Palette.neutral[500]} size={18} />
+          </View>
           <Text style={styles.muted}>{descripcion}</Text>
           <TiposAtendidos nombres={nombresTipos(tipos, vehiculo.tipoEventoIds)} vacio="Sin tipos de evento" />
           {!!error && <Text style={styles.error}>{error}</Text>}
         </Pressable>
         <IconButton
-          glyph="🗑"
+          icon="quitar"
           label={`Quitar vehículo ${indice}`}
-          tint={Palette.neutral[600]}
+          tint={Palette.danger[600]}
+          surface="light"
           onPress={() => (ocupantes.length > 0 ? setConfirmarQuitar(true) : onQuitar())}
         />
       </View>
@@ -128,7 +134,7 @@ export function VehiculoTarjeta({
               <Button label="Cancelar" variant="ghost" onPress={() => setConfirmarQuitar(false)} />
             </View>
             <View style={styles.flex}>
-              <Button label="Quitar" variant="secondary" onPress={onQuitar} />
+              <Button label="Quitar" variant="danger" onPress={onQuitar} />
             </View>
           </View>
         </View>
@@ -147,18 +153,24 @@ export function VehiculoTarjeta({
             <TiposAtendidos nombres={nombresTipos(tipos, inv.tipoEventoIds)} />
             {!!erroresPersona(inv.key) && <Text style={styles.error}>{erroresPersona(inv.key)}</Text>}
           </Pressable>
-          <IconButton glyph="✕" label={`Quitar a ${nombrePersona(inv)}`} tint={Palette.neutral[600]} onPress={() => onQuitarPersona(inv.key)} />
+          <IconButton
+            icon="cerrar"
+            label={`Quitar a ${nombrePersona(inv)}`}
+            tint={Palette.neutral[600]}
+            surface="light"
+            onPress={() => onQuitarPersona(inv.key)}
+          />
         </View>
       ))}
 
       <View style={styles.fila}>
         {puedeAgregarConductor && (
           <View style={styles.flex}>
-            <Button label="+ Conductor" variant="ghost" onPress={() => onAgregarPersona(RolCiudadanoValue.Conductor)} />
+            <Button label="Conductor" icon="agregar" variant="ghost" onPress={() => onAgregarPersona(RolCiudadanoValue.Conductor)} />
           </View>
         )}
         <View style={styles.flex}>
-          <Button label="+ Pasajero" variant="ghost" onPress={() => onAgregarPersona(RolCiudadanoValue.Pasajero)} />
+          <Button label="Pasajero" icon="agregar" variant="ghost" onPress={() => onAgregarPersona(RolCiudadanoValue.Pasajero)} />
         </View>
       </View>
     </View>
@@ -175,26 +187,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Palette.neutral[200],
   },
+  tarjetaError: { borderColor: Palette.danger[500], borderWidth: 2 },
   cabecera: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  titulo: { fontSize: 14, fontWeight: '800', color: Palette.neutral[900] },
-  muted: { fontSize: 13, color: Palette.neutral[600] },
-  error: { fontSize: 13, color: Palette.danger[600], fontWeight: '600' },
+  tituloFila: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  titulo: { flexShrink: 1, fontSize: 16, fontWeight: '800', color: Palette.neutral[900] },
+  muted: { fontSize: 14, color: Palette.neutral[600] },
+  error: { fontSize: 14, color: Palette.danger[600], fontWeight: '700' },
   ocupante: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    minHeight: 52,
+    paddingVertical: 6,
+    paddingLeft: 12,
     borderRadius: 10,
     backgroundColor: Palette.white,
   },
-  ocupanteTexto: { fontSize: 14, fontWeight: '600', color: Palette.neutral[900] },
+  ocupanteTexto: { fontSize: 15, fontWeight: '600', color: Palette.neutral[900] },
   fila: { flexDirection: 'row', gap: 8 },
   confirmar: { gap: 8, padding: 10, borderRadius: 10, backgroundColor: Palette.warning[50] },
-  confirmarTexto: { fontSize: 13, fontWeight: '600', color: Palette.warning[900] },
+  confirmarTexto: { fontSize: 14, fontWeight: '600', color: Palette.warning[900] },
   tipos: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
   tipo: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: Palette.primary[700],
     backgroundColor: Palette.primary[50],
@@ -203,5 +218,5 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     overflow: 'hidden',
   },
-  tiposVacio: { fontSize: 12, fontWeight: '600', color: Palette.danger[600], marginTop: 4 },
+  tiposVacio: { fontSize: 14, fontWeight: '600', color: Palette.danger[600], marginTop: 4 },
 });

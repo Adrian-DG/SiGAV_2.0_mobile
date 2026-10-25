@@ -73,13 +73,13 @@ export function SelectField({
         <SafeAreaView style={styles.modal}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{label}</Text>
-            <Pressable accessibilityRole="button" onPress={close} hitSlop={12}>
+            <Pressable accessibilityRole="button" onPress={close} hitSlop={12} style={styles.closeButton}>
               <Text style={styles.close}>Cerrar</Text>
             </Pressable>
           </View>
           <TextInput
             placeholder="Buscar…"
-            placeholderTextColor={Palette.neutral[400]}
+            placeholderTextColor={Palette.neutral[500]}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
@@ -135,7 +135,7 @@ export function SelectField({
 
 const styles = StyleSheet.create({
   container: { gap: 6 },
-  label: { fontSize: 13, fontWeight: '600', color: Palette.neutral[600] },
+  label: { fontSize: 15, fontWeight: '600', color: Palette.neutral[700] },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -146,12 +146,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Palette.neutral[200],
   },
-  fieldError: { borderColor: Palette.danger[500] },
+  fieldError: { borderColor: Palette.danger[500], borderWidth: 2 },
   fieldDisabled: { opacity: 0.6 },
   value: { flex: 1, fontSize: 16, color: Palette.neutral[900] },
-  placeholder: { color: Palette.neutral[400] },
+  placeholder: { color: Palette.neutral[500] },
   chevron: { fontSize: 16, color: Palette.neutral[500] },
-  errorText: { fontSize: 12, color: Palette.danger[600] },
+  errorText: { fontSize: 14, fontWeight: '600', color: Palette.danger[600] },
   modal: { flex: 1, backgroundColor: Palette.white },
   modalHeader: {
     flexDirection: 'row',
@@ -160,7 +160,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: Palette.neutral[900] },
-  close: { fontSize: 15, fontWeight: '700', color: Palette.primary[600] },
+  close: { fontSize: 16, fontWeight: '700', color: Palette.primary[600] },
+  closeButton: { minHeight: 44, justifyContent: 'center' },
   search: {
     marginHorizontal: 16,
     marginBottom: 8,
@@ -172,6 +173,8 @@ const styles = StyleSheet.create({
     color: Palette.neutral[900],
   },
   option: {
+    minHeight: 52,
+    justifyContent: 'center',
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,

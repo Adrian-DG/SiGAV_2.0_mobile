@@ -1,17 +1,27 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type PressableProps } from 'react-native';
 
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Palette } from '@/constants/colors';
 
-type Variant = 'primary' | 'secondary' | 'ghost';
+/**
+ * - primary: la acción principal de la pantalla (una sola a la vista).
+ * - secondary: agregar o una acción alternativa importante (naranja institucional).
+ * - outline: acción alternativa junto a la principal, sin competir con ella.
+ * - ghost: acciones menores (cancelar, cambiar, reintentar).
+ * - danger: quitar o borrar.
+ */
+type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
 
 type ButtonProps = PressableProps & {
   label: string;
   variant?: Variant;
   loading?: boolean;
+  icon?: IconName;
 };
 
-export function Button({ label, variant = 'primary', loading = false, disabled, style, ...rest }: ButtonProps) {
+export function Button({ label, variant = 'primary', loading = false, icon, disabled, style, ...rest }: ButtonProps) {
   const isDisabled = disabled || loading;
+  const textColor = TEXT_COLOR[variant];
 
   return (
     <Pressable
@@ -27,13 +37,25 @@ export function Button({ label, variant = 'primary', loading = false, disabled, 
       ]}
       {...rest}>
       {loading ? (
-        <ActivityIndicator color={variant === 'ghost' ? Palette.primary[500] : Palette.white} />
+        <ActivityIndicator color={textColor} />
       ) : (
-        <Text style={[styles.label, textVariantStyles[variant]]}>{label}</Text>
+        <>
+          {!!icon && <Icon name={icon} color={textColor} size={20} />}
+          <Text style={[styles.label, { color: textColor }]}>{label}</Text>
+        </>
       )}
     </Pressable>
   );
 }
+
+// Fondos con texto blanco de contraste AA (≥ 4.5:1): naranja 700 en vez de 500 (2.8:1 al sol no se lee)
+const TEXT_COLOR: Record<Variant, string> = {
+  primary: Palette.white,
+  secondary: Palette.white,
+  outline: Palette.primary[600],
+  ghost: Palette.primary[600],
+  danger: Palette.white,
+};
 
 const styles = StyleSheet.create({
   base: {
@@ -62,15 +84,17 @@ const variantStyles = StyleSheet.create({
     backgroundColor: Palette.primary[500],
   },
   secondary: {
-    backgroundColor: Palette.accent[500],
+    backgroundColor: Palette.accent[700],
+  },
+  outline: {
+    backgroundColor: Palette.white,
+    borderWidth: 1.5,
+    borderColor: Palette.primary[500],
   },
   ghost: {
     backgroundColor: 'transparent',
   },
-});
-
-const textVariantStyles = StyleSheet.create({
-  primary: { color: Palette.white },
-  secondary: { color: Palette.white },
-  ghost: { color: Palette.primary[500] },
+  danger: {
+    backgroundColor: Palette.danger[600],
+  },
 });

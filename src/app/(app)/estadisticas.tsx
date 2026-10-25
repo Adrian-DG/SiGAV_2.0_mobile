@@ -73,7 +73,7 @@ export default function EstadisticasScreen() {
 
   return (
     <SafeAreaView style={styles.flex} edges={['top']}>
-      <ScreenHeader title="Estadísticas" right={<IconButton glyph="✕" label="Cerrar" onPress={() => router.back()} />} />
+      <ScreenHeader title="Estadísticas" right={<IconButton icon="cerrar" label="Cerrar" onPress={() => router.back()} />} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refrescando} onRefresh={recargar} />}>
@@ -83,7 +83,7 @@ export default function EstadisticasScreen() {
 
         {carga?.estado === 'error' && !cargando && (
           <Card style={styles.card}>
-            <EmptyState glyph="⚠" title="No disponible" description={carga.mensaje} />
+            <EmptyState icon="alerta" title="No disponible" description={carga.mensaje} />
             <Button label="Reintentar" variant="ghost" onPress={recargar} />
           </Card>
         )}
@@ -124,7 +124,7 @@ function Contenido({ datos }: { datos: EstadisticasEventos }) {
 
       {datos.resumen.totalEventos === 0 ? (
         <Card style={styles.card}>
-          <EmptyState glyph="▢" title="Sin eventos" description="Aún no se han atendido eventos hoy." />
+          <EmptyState icon="vacio" title="Sin eventos" description="Aún no se han atendido eventos hoy." />
         </Card>
       ) : (
         <>

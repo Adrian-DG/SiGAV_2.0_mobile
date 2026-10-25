@@ -1,39 +1,42 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
+import { Icon, type IconName } from '@/components/ui/icon';
 import { Palette } from '@/constants/colors';
 
 type IconButtonProps = {
-  glyph: string;
+  icon: IconName;
   label: string;
   onPress: () => void;
   tint?: string;
+  /** Sobre qué fondo está: cambia el resalte al presionar (en el encabezado azul o en una tarjeta clara). */
+  surface?: 'dark' | 'light';
 };
 
-export function IconButton({ glyph, label, onPress, tint = Palette.white }: IconButtonProps) {
+/** Botón de ícono de 48×48: el mínimo para tocarlo bien con guantes o en movimiento. */
+export function IconButton({ icon, label, onPress, tint = Palette.white, surface = 'dark' }: IconButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      hitSlop={8}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-      <Text style={[styles.glyph, { color: tint }]}>{glyph}</Text>
+      style={({ pressed }) => [styles.button, pressed && (surface === 'dark' ? styles.pressedDark : styles.pressedLight)]}>
+      <Icon name={icon} color={tint} size={24} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressed: {
+  pressedDark: {
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
-  glyph: {
-    fontSize: 18,
+  pressedLight: {
+    backgroundColor: Palette.neutral[100],
   },
 });

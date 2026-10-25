@@ -1,18 +1,15 @@
 {
   "expo": {
-    "name": "SiGAV Móvil",
+    "name": "SiGAV",
     "slug": "sigav-movil",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "sigav",
     "userInterfaceStyle": "automatic",
-    "ios": {
-      "icon": "./assets/expo.icon"
-    },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -46,7 +43,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#05539B",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/images/brand/comipol-crest.png",
           "imageWidth": 140
         }
@@ -62,9 +59,9 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "SiGAV Móvil usa tu ubicación para registrar dónde ocurre cada evento atendido por la unidad y mostrar la unidad en el mapa del centro de control.",
-          "locationAlwaysAndWhenInUsePermission": "Durante el turno, SiGAV Móvil comparte la ubicación de la unidad con el centro de control aunque la pantalla esté bloqueada. Deja de enviarla al cerrar sesión.",
-          "locationAlwaysPermission": "Durante el turno, SiGAV Móvil comparte la ubicación de la unidad con el centro de control aunque la pantalla esté bloqueada. Deja de enviarla al cerrar sesión.",
+          "locationWhenInUsePermission": "SiGAV usa tu ubicación para registrar dónde ocurre cada evento atendido por la unidad y mostrar la unidad en el mapa del centro de control.",
+          "locationAlwaysAndWhenInUsePermission": "Durante el turno, SiGAV comparte la ubicación de la unidad con el centro de control aunque la pantalla esté bloqueada. Deja de enviarla al cerrar sesión.",
+          "locationAlwaysPermission": "Durante el turno, SiGAV comparte la ubicación de la unidad con el centro de control aunque la pantalla esté bloqueada. Deja de enviarla al cerrar sesión.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
@@ -73,7 +70,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "SiGAV Móvil usa la cámara para escanear la cédula del ciudadano y la placa del vehículo."
+          "cameraPermission": "SiGAV usa la cámara para escanear la cédula del ciudadano y la placa del vehículo."
         }
       ],
       "./plugins/with-mlkit-ocr"

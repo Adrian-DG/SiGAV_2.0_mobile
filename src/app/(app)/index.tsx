@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Fab } from '@/components/ui/fab';
 import { IconButton } from '@/components/ui/icon-button';
+import { useToast } from '@/components/ui/toast';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
@@ -52,6 +53,7 @@ type EventsState =
 export default function HomeScreen() {
   const router = useRouter();
   const { session, signOut } = useSession();
+  const toast = useToast();
   const isConnected = useNetworkStatus();
   const db = useSQLiteContext();
   const sesion = useSesionEvento();
@@ -184,6 +186,93 @@ export default function HomeScreen() {
     }
   }
 
+  // ------------------------------------------------------------------ Cerrar sesión
+
+  // Mientras se envían los pendientes antes de salir, un segundo toque no repite el proceso
+  const cerrandoSesion = useRef(false);
+
+  /**
+   * Cerrar sesión: primero se confirma. Los eventos solo viven en este teléfono hasta enviarlos, así
+   * que no se sale con eventos sin enviar: los en curso deben cerrarse antes y los por enviar se
+   * envían aquí mismo (si alguno no se puede enviar, la sesión sigue abierta).
+   */
+  function pedirCierreSesion() {
+    if (cerrandoSesion.current) return;
+    Alert.alert('¿Cerrar sesión?', 'Dejará de compartir la ubicación de la unidad con el centro de operaciones.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Cerrar sesión', style: 'destructive', onPress: () => void validarYCerrarSesion() },
+    ]);
+  }
+
+  async function validarYCerrarSesion() {
+    if (!sesion) {
+      await signOut();
+      return;
+    }
+    const pendientes = await contarEventosLocales(db, sesion);
+
+    if (pendientes.en_curso > 0) {
+      setEstatus('en_curso');
+      Alert.alert(
+        'Tiene eventos en curso',
+        `${pendientes.en_curso === 1 ? 'Hay 1 evento en curso' : `Hay ${pendientes.en_curso} eventos en curso`} sin cerrar. ` +
+          'Ciérrelos y envíelos antes de cerrar sesión: si sale ahora no se enviarán al centro.',
+      );
+      return;
+    }
+
+    if (pendientes.por_enviar === 0) {
+      await signOut();
+      return;
+    }
+
+    setEstatus('por_enviar');
+    Alert.alert(
+      'Tiene eventos sin enviar',
+      `${pendientes.por_enviar === 1 ? 'Hay 1 evento cerrado' : `Hay ${pendientes.por_enviar} eventos cerrados`} sin enviar al centro. ` +
+        'Se enviarán ahora y luego se cerrará la sesión.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Enviar y cerrar sesión', onPress: () => void enviarPendientesYCerrarSesion() },
+      ],
+    );
+  }
+
+  async function enviarPendientesYCerrarSesion() {
+    if (!token || !sesion || cerrandoSesion.current) return;
+    cerrandoSesion.current = true;
+    try {
+      const porEnviar = await listarEventosLocales(db, sesion, 'por_enviar');
+      toast.mostrar({ mensaje: `Enviando ${porEnviar.length === 1 ? '1 evento' : `${porEnviar.length} eventos`}…`, duracion: 60_000 });
+
+      const fallidos: string[] = [];
+      // Uno por uno: con mala señal, varios a la vez compiten por el ancho de banda
+      for (const item of porEnviar) {
+        try {
+          await enviarEventoLocal(db, token, sesion, item.localId);
+        } catch (error) {
+          fallidos.push(`• ${item.tipos.join(', ') || 'Evento'}: ${describirError(error)}`);
+        }
+      }
+
+      if (fallidos.length > 0) {
+        toast.mostrar({ mensaje: 'No se cerró la sesión: hay eventos sin enviar', icono: 'error' });
+        Alert.alert(
+          'No se pudo cerrar la sesión',
+          `${fallidos.length === 1 ? '1 evento no se pudo enviar' : `${fallidos.length} eventos no se pudieron enviar`}. ` +
+            `Siguen guardados en el teléfono; reintente cuando tenga señal.\n\n${fallidos.join('\n')}`,
+        );
+        return;
+      }
+
+      toast.mostrar({ mensaje: 'Eventos enviados', icono: 'exito' });
+      await signOut();
+    } finally {
+      cerrandoSesion.current = false;
+      refetchAll();
+    }
+  }
+
   /** Trae el asignado al dispositivo (la primera vez, con conexión) y abre su formulario. */
   async function editarAsignado(evento: EventoAsignado) {
     if (!token || !sesion) return;
@@ -248,7 +337,7 @@ export default function HomeScreen() {
               accessibilityLabel={isConnected ? 'Conectado' : 'Sin conexión'}
             />
             <IconButton icon="recargar" label="Actualizar" onPress={refetchAll} />
-            <IconButton icon="salir" label="Cerrar sesión" onPress={() => signOut()} />
+            <IconButton icon="salir" label="Cerrar sesión" onPress={pedirCierreSesion} />
           </>
         }
       />

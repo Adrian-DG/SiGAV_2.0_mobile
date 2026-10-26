@@ -1,7 +1,7 @@
 import { borrarFoto, fotoExiste, type FotoEvidencia } from '@/features/scan/fotos';
 import { ApiError, NETWORK_ERROR_STATUS } from '@/lib/api-client';
 
-import { registrarEvento, subirEvidencia } from '../api';
+import { actualizarEvento, registrarEvento, subirEvidencia } from '../api';
 import { TipoEvidenciaValue, type RegistrarEventoResult, type TipoEvidencia } from '../types';
 import {
   marcarEnviado,
@@ -17,7 +17,8 @@ type FotoPorSubir = { foto: FotoEvidencia; tipo: TipoEvidencia; ciudadanoId?: nu
 
 /**
  * Envía a la API un evento cerrado en el dispositivo y luego sus fotos (placa, cédula) como
- * evidencias. Es seguro reintentarlo: el requestId hace que la API devuelva el mismo evento si ya lo
+ * evidencias. Uno registrado por el agente se crea (POST); uno asignado por el call center (ya tiene
+ * número en el servidor) se completa con lo que se editó aquí (PUT). Es seguro reintentarlo: el requestId hace que la API devuelva el mismo evento si ya lo
  * había recibido (p. ej. se cortó la señal antes de llegar la respuesta) y cada foto tiene el suyo,
  * así que no se duplican. El evento queda "enviado" solo cuando subieron todas sus fotos; si algo
  * falla, el motivo queda guardado en el evento para mostrarlo en el listado.
@@ -35,7 +36,8 @@ export async function enviarEventoLocal(
   const request = toRequestDeEnvio(evento);
 
   try {
-    const resultado = await registrarEvento(token, request);
+    const resultado =
+      evento.serverId != null ? await actualizarEvento(token, evento.serverId, request) : await registrarEvento(token, request);
     const fotos = fotosPorSubir(evento, resultado);
     await subirFotos(token, resultado.id, fotos);
     await marcarEnviado(db, localId, resultado.id);

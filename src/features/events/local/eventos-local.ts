@@ -7,6 +7,10 @@
  *   3. Para cerrarlo elige el tipo de cierre → queda "por enviar" (aún editable).
  *   4. Lo envía → POST /api/eventos ya completado; queda "enviado" y de solo lectura.
  *
+ * Un evento que asignó el call center vive en el servidor hasta que el agente lo edita: entonces se
+ * trae aquí (server_id = su número) y sigue el mismo ciclo; al enviarlo va con PUT /api/eventos/{id}.
+ * Los que registra el agente solo tienen server_id una vez enviados.
+ *
  * Solo depende de la interfaz mínima de la base (no de React ni de expo-sqlite), para poder
  * probarlo con cualquier SQLite.
  */
@@ -321,6 +325,24 @@ export async function cerrarEventoLocal(db: LocalDb, localId: number, tipoCierre
   if (result.changes === 0) throw new EventoNoEditableError();
 }
 
+/**
+ * Trae al dispositivo un evento asignado por el call center para completarlo y enviarlo como los
+ * demás. Conserva su número en el servidor y su fecha de reporte (la del call center).
+ */
+export async function importarEventoAsignado(
+  db: LocalDb,
+  sesion: SesionEvento,
+  serverId: number,
+  fechaHoraReporte: string,
+  form: EventoForm,
+  tipos: TipoEventoInfo[],
+  ahora: Date = new Date(),
+): Promise<number> {
+  const localId = await guardarEventoLocal(db, form, sesion, tipos, ahora);
+  await db.runAsync('UPDATE eventos SET server_id = ?, fecha_hora_reporte_utc = ? WHERE id = ?', serverId, fechaHoraReporte, localId);
+  return localId;
+}
+
 export async function marcarEnviado(db: LocalDb, localId: number, serverId: number) {
   await db.runAsync('UPDATE eventos SET synced = 1, server_id = ?, sync_error = NULL WHERE id = ?', serverId, localId);
 }
@@ -388,6 +410,27 @@ export async function listarEventosLocales(db: LocalDb, sesion: SesionEvento, es
       syncError: e.sync_error,
     };
   });
+}
+
+/** El evento asignado (número del servidor) si ya está en el dispositivo sin enviar: su localId, o null. */
+export async function localIdDeAsignado(db: LocalDb, sesion: SesionEvento, serverId: number): Promise<number | null> {
+  const fila = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM eventos WHERE agente_id = ? AND unidad_id = ? AND server_id = ? AND synced = 0',
+    sesion.agenteId,
+    sesion.unidadId,
+    serverId,
+  );
+  return fila?.id ?? null;
+}
+
+/** Números del servidor de los asignados que ya están en el dispositivo sin enviar (se listan como locales). */
+export async function asignadosEnDispositivo(db: LocalDb, sesion: SesionEvento): Promise<number[]> {
+  const filas = await db.getAllAsync<{ server_id: number }>(
+    'SELECT server_id FROM eventos WHERE agente_id = ? AND unidad_id = ? AND server_id IS NOT NULL AND synced = 0',
+    sesion.agenteId,
+    sesion.unidadId,
+  );
+  return filas.map((f) => f.server_id);
 }
 
 /**

@@ -159,6 +159,12 @@ export const listarTiposVehiculo = (db: LocalDb) => listarSimple(db, 'cat_tipos_
 export const listarMarcas = (db: LocalDb) => listarSimple(db, 'cat_marcas');
 
 /** Prefijos de placa con sus tipos de vehículo (features/events/form/placa.ts). */
+/** Provincia del municipio según el catálogo del dispositivo (null si no está). */
+export async function provinciaDeMunicipio(db: LocalDb, municipioId: number): Promise<number | null> {
+  const fila = await db.getFirstAsync<{ provincia_id: number }>('SELECT provincia_id FROM cat_municipios WHERE id = ?', municipioId);
+  return fila?.provincia_id ?? null;
+}
+
 export async function listarPrefijosPlaca(db: LocalDb): Promise<PrefijoPlacaItem[]> {
   const prefijos = await db.getAllAsync<Omit<PrefijoPlacaItem, 'tipoVehiculoIds'>>(
     'SELECT id, prefijo, nombre, patron, ejemplo FROM cat_prefijos_placa ORDER BY id',

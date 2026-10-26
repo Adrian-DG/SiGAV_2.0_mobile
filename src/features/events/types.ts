@@ -130,6 +130,46 @@ export type RegistrarEventoResult = {
   ciudadanoIds?: number[];
 };
 
+/**
+ * Mirrors Application/Features/Operaciones/Eventos/EventoViewModels.cs EventoDetalleViewModel (lo que
+ * usa la app para traer al dispositivo un evento asignado). Marca, modelo, color y nacionalidad
+ * llegan como nombres, no como Ids del catálogo.
+ */
+export type EventoDetalle = {
+  id: number;
+  estado: EstadoEvento;
+  latitud: number;
+  longitud: number;
+  direccion: string | null;
+  municipioId: number;
+  comentario: string | null;
+  fechaHoraReporte: string;
+  fechaHoraLlegada: string | null;
+  tipos: { id: number; nombre: string; categoria: CategoriaEvento }[];
+  /** rol: 1 Principal, 2 Apoyo, 3 Apoyo solicitado. */
+  unidades: { unidadId: number; rol: number; agenteId: number }[];
+  vehiculos: {
+    id: number;
+    placa: string | null;
+    marca: string | null;
+    modelo: string | null;
+    color: string | null;
+    tipoEventoIds: number[];
+  }[];
+  ciudadanos: {
+    id: number;
+    rol: RolCiudadano;
+    identificacion: string | null;
+    nombre: string | null;
+    apellido: string | null;
+    sexo: Sexo;
+    telefono: string | null;
+    vehiculoId: number | null;
+    tipoEventoIds: number[];
+    edad: number | null;
+  }[];
+};
+
 /** Mirrors Domain/Enums/TipoEvidenciaEnum.cs. */
 export const TipoEvidenciaValue = {
   Foto: 1,

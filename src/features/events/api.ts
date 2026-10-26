@@ -8,6 +8,7 @@ import type {
   DenominacionActual,
   EstadisticasEventosResponse,
   EstadoEvento,
+  EventoDetalle,
   EventoListItem,
   PagedResult,
   RegistrarEventoRequest,
@@ -46,6 +47,20 @@ export function getEventosUnidad(token: string, estado: EstadoEvento, page = 1, 
  */
 export function registrarEvento(token: string, request: RegistrarEventoRequest) {
   return apiRequest<RegistrarEventoResult>('/eventos', { method: 'POST', token, body: request });
+}
+
+/**
+ * PUT /api/eventos/{id} — envía un evento asignado por el call center, completado en el dispositivo
+ * (mismo cuerpo que el registro): la API reemplaza sus datos, vehículos y personas y lo completa.
+ * Idempotente por requestId: un reenvío responde el mismo evento con esDuplicado = true.
+ */
+export function actualizarEvento(token: string, eventoId: number, request: RegistrarEventoRequest) {
+  return apiRequest<RegistrarEventoResult>(`/eventos/${eventoId}`, { method: 'PUT', token, body: request });
+}
+
+/** GET /api/eventos/{id} — detalle completo (para traer al dispositivo un evento asignado y completarlo). */
+export function getEventoDetalle(token: string, eventoId: number) {
+  return apiRequest<EventoDetalle>(`/eventos/${eventoId}`, { token });
 }
 
 /**

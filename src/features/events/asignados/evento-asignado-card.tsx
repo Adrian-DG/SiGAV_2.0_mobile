@@ -29,14 +29,17 @@ type EventoAsignadoCardProps = {
   onIniciar: () => Promise<void>;
   onCompletar: (tipoCierreId: number) => Promise<void>;
   onCambiarAgente: (agenteId: number) => Promise<void>;
+  /** Lo trae al dispositivo y abre el formulario (agregar vehículos y personas, corregir el lugar...). */
+  onEditar: () => Promise<void>;
 };
 
 /**
  * Evento que el call center asignó a la unidad. Llega pendiente: "Llegué" lo pasa a en curso y
- * "Cerrar" lo completa en el servidor (no pasa por la cola del dispositivo). Solo la unidad
- * principal cambia su estado.
+ * "Cerrar" lo completa en el servidor (no pasa por la cola del dispositivo). "Editar" lo trae al
+ * dispositivo para completarlo: desde ahí se lista con los eventos propios y se cierra y envía como
+ * ellos. Solo la unidad principal cambia su estado o lo edita.
  */
-export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, onCambiarAgente }: EventoAsignadoCardProps) {
+export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, onCambiarAgente, onEditar }: EventoAsignadoCardProps) {
   const [cerrarVisible, setCerrarVisible] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const esPrincipal = evento.rol === ROL_PRINCIPAL;
@@ -101,6 +104,16 @@ export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, on
         <Button label="Cómo llegar" variant="ghost" style={styles.actionButton} onPress={comoLlegar} />
         {esPrincipal && evento.estado === EstadoEventoValue.Pendiente && (
           <Button label="Llegué" variant="secondary" style={styles.actionButton} loading={ocupado} onPress={() => void ejecutar(onIniciar)} />
+        )}
+        {esPrincipal && (
+          <Button
+            label="Editar"
+            icon="editar"
+            variant="outline"
+            style={styles.actionButton}
+            disabled={ocupado}
+            onPress={() => void ejecutar(onEditar)}
+          />
         )}
         {esPrincipal && (
           <Button label="Cerrar" style={styles.actionButton} disabled={ocupado} onPress={() => setCerrarVisible(true)} />
@@ -168,13 +181,16 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     borderTopWidth: 1,
     borderTopColor: Palette.neutral[100],
     padding: 14,
   },
+  // Dos por fila: con "Llegué" y "Editar" no caben cuatro en un teléfono
   actionButton: {
-    flex: 1,
-    minHeight: 40,
+    flexGrow: 1,
+    flexBasis: '45%',
+    minHeight: 48,
   },
 });

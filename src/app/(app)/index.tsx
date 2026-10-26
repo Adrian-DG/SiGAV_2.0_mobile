@@ -18,6 +18,7 @@ import { EventCard } from '@/features/events/components/event-card';
 import { UnitSummaryCard } from '@/features/events/components/unit-summary-card';
 import { describirError, enviarEventoLocal } from '@/features/events/local/enviar-evento';
 import {
+  asignadosEnDispositivo,
   cerrarEventoLocal,
   contarEventosLocales,
   ESTATUS_LOCAL_LABELS,
@@ -28,6 +29,7 @@ import {
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
 import type { DenominacionActual, ResumenEventos } from '@/features/events/types';
 import { cambiarAgenteEvento, getEventosAsignados, iniciarEvento, type EventoAsignado } from '@/features/events/asignados/api';
+import { abrirAsignadoEnDispositivo } from '@/features/events/asignados/importar';
 import { EventoAsignadoCard } from '@/features/events/asignados/evento-asignado-card';
 import { useNotificaciones } from '@/features/notificaciones/notificaciones-context';
 import { EstadoUbicacion } from '@/features/posicion/components/estado-ubicacion';
@@ -60,6 +62,8 @@ export default function HomeScreen() {
   const [isLoadingResumen, setIsLoadingResumen] = useState(true);
   const [denominacion, setDenominacion] = useState<DenominacionActual | null>(null);
   const [eventsState, setEventsState] = useState<EventsState>({ status: 'loading' });
+  // Asignados que el agente ya trajo al dispositivo para editarlos: se listan con los propios
+  const [enDispositivo, setEnDispositivo] = useState<number[]>([]);
   // Bumping this re-triggers every load effect below; it's how pull-to-refresh and the
   // "Reintentar" button re-fetch without exposing the fetchers themselves outside the effects.
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -106,10 +110,15 @@ export default function HomeScreen() {
     async function run() {
       setEventsState({ status: 'loading' });
       try {
-        const [items, totales] = await Promise.all([listarEventosLocales(db, duenio, estatus), contarEventosLocales(db, duenio)]);
+        const [items, totales, importados] = await Promise.all([
+          listarEventosLocales(db, duenio, estatus),
+          contarEventosLocales(db, duenio),
+          asignadosEnDispositivo(db, duenio),
+        ]);
         if (!cancelled) {
           setEventsState({ status: 'ready', items });
           setConteo(totales);
+          setEnDispositivo(importados);
         }
         // Se recarga tras registrar, cerrar o enviar un evento: el call center debe saber de inmediato
         // qué agentes quedaron ocupados (o libres) por eventos que solo están en el dispositivo
@@ -175,6 +184,18 @@ export default function HomeScreen() {
     }
   }
 
+  /** Trae el asignado al dispositivo (la primera vez, con conexión) y abre su formulario. */
+  async function editarAsignado(evento: EventoAsignado) {
+    if (!token || !sesion) return;
+    try {
+      const localId = await abrirAsignadoEnDispositivo(db, token, sesion, evento.id);
+      router.push({ pathname: '/events/[id]', params: { id: String(localId) } });
+    } catch (error) {
+      Alert.alert('No se pudo abrir el evento', describirError(error));
+      throw error;
+    }
+  }
+
   async function cerrar(item: EventoLocalListItem, tipoCierreId: number) {
     await cerrarEventoLocal(db, item.localId, tipoCierreId);
     refetchAll();
@@ -209,6 +230,8 @@ export default function HomeScreen() {
     }, []),
   );
   const isRefreshing = isLoadingResumen || eventsState.status === 'loading';
+  // Los que ya están en el dispositivo se editan, cierran y envían desde la lista de eventos
+  const pendientesDeEditar = asignados?.filter((a) => !enDispositivo.includes(a.id)) ?? [];
   // Sin agente o unidad no hay de quién listar eventos (no debería pasar en una sesión móvil)
   const listado: EventsState = sesion
     ? eventsState
@@ -251,12 +274,12 @@ export default function HomeScreen() {
               />
             )}
             {!!token && <EstadoUbicacion token={token} />}
-            {!!token && !!asignados?.length && (
+            {!!token && pendientesDeEditar.length > 0 && (
               <View style={styles.asignados}>
                 <Text style={styles.asignadosTitulo}>
-                  Asignados por el centro ({asignados.length}){estadoAvisos !== 'conectado' ? ' · avisos sin conexión' : ''}
+                  Asignados por el centro ({pendientesDeEditar.length}){estadoAvisos !== 'conectado' ? ' · avisos sin conexión' : ''}
                 </Text>
-                {asignados.map((evento) => (
+                {pendientesDeEditar.map((evento) => (
                   <EventoAsignadoCard
                     key={evento.id}
                     evento={evento}
@@ -266,6 +289,7 @@ export default function HomeScreen() {
                       operarAsignado(() => completarEvento(token, evento.id, { tipoCierreId }), 'No se pudo cerrar el evento')
                     }
                     onCambiarAgente={(id) => operarAsignado(() => cambiarAgenteEvento(token, evento.id, id), 'No se pudo cambiar el agente')}
+                    onEditar={() => editarAsignado(evento)}
                   />
                 ))}
               </View>

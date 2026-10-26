@@ -52,7 +52,8 @@
       [
         "expo-notifications",
         {
-          "color": "#05539B"
+          "color": "#05539B",
+          "sounds": ["./assets/sounds/alerta_centro.wav"]
         }
       ],
       "expo-sqlite",

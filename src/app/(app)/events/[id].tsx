@@ -78,9 +78,16 @@ export default function EditEventScreen() {
       textoGuardar="Guardar cambios"
       mensajeGuardado="Cambios guardados"
       aviso={
-        evento.tipoCierreId != null
-          ? `Cerrado como "${evento.tipoCierre ?? `tipo #${evento.tipoCierreId}`}". Puede corregirlo hasta enviarlo.`
-          : null
+        [
+          evento.serverId != null
+            ? `Evento No. ${evento.serverId} asignado por el centro. Complete lo atendido; al cerrarlo y enviarlo se actualiza en el centro.`
+            : null,
+          evento.tipoCierreId != null
+            ? `Cerrado como "${evento.tipoCierre ?? `tipo #${evento.tipoCierreId}`}". Puede corregirlo hasta enviarlo.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n') || null
       }
       onGuardar={async (form, tipos) => {
         if (!sesion) throw new Error('La sesión no tiene agente o unidad: vuelva a iniciar sesión.');

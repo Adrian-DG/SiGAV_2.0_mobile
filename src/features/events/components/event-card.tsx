@@ -68,6 +68,9 @@ export function EventCard({ item, agenteAtiende, onEditar, onCerrar, onEnviar }:
         onPress={() => setExpanded((prev) => !prev)}
         style={styles.header}>
         <View style={styles.headerText}>
+          {item.serverId != null && item.estatus !== 'enviado' && (
+            <Text style={styles.asignado}>Asignado por el centro · No. {item.serverId}</Text>
+          )}
           <View style={styles.categorias}>
             {item.categorias.map((categoria) => (
               <CategoriaBadge key={categoria} categoria={categoria} />
@@ -154,6 +157,12 @@ const styles = StyleSheet.create({
   badges: {
     alignItems: 'flex-end',
     gap: 6,
+  },
+  asignado: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Palette.warning[900],
+    textTransform: 'uppercase',
   },
   porEnviar: {
     fontSize: 12,

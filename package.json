@@ -51,6 +51,8 @@
     "start:local": "node scripts/start.js local",
     "start:tunnel": "node scripts/start.js dev_tunnel",
     "start:prod": "node scripts/start.js production",
+    "android:local": "node scripts/start.js local --android",
+    "android:tunnel": "node scripts/start.js dev_tunnel --android",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",

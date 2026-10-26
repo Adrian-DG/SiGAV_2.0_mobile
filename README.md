@@ -20,16 +20,21 @@ App de campo de Asistencia Vial para las unidades (Expo SDK 57 · React Native �
 
    `EXPO_PUBLIC_API_URL_LOCAL` es opcional: sin valor se detecta sola (`localhost` en web, la IP que sirve Metro en emulador/dispositivo). Para un dispositivo físico la API debe escuchar en la red local (no solo en `localhost`), y para la versión web debe permitir CORS desde el origen de Expo.
 
-3. Iniciar:
+3. Iniciar eligiendo la API (no usar `npx expo start` ni `npx expo run:android` directos: no definen el ambiente y la app cae en `local`):
 
    ```bash
-   npx expo start
+   npm run android:tunnel            # Metro → Dev Tunnel y abre la app en el teléfono (USB)
+   npm run android:tunnel -- --build # además compila e instala la app (cambios nativos)
+   npm run android:local             # lo mismo contra la API de esta PC
+   npm run start:tunnel              # solo Metro (start:local | start:prod)
    ```
+
+   Al cambiar de ambiente respecto del último arranque, el script limpia la caché de Metro: Expo incrusta `EXPO_PUBLIC_*` en el bundle y sin limpiarla la app seguiría con la API anterior.
 
 ## Comandos
 
 ```bash
-npx expo start          # servidor de desarrollo
+npm run start:tunnel    # servidor de desarrollo (o start:local / start:prod)
 npm run lint            # expo lint
 npm run typecheck       # tsc --noEmit
 npx expo install <pkg>  # agregar dependencias (versiones compatibles con el SDK)

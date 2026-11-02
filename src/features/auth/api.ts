@@ -30,6 +30,6 @@ export function loginMovil(cedula: string, ficha: string, cedulaComponente?: str
  * GET /api/authentication/sesion — identidad de la sesión actual. La app ya la lee del token
  * (lib/jwt.ts); la usa para confirmar que la API sigue aceptándolo al restaurar la sesión.
  */
-export function getSesionActual(token: string) {
-  return apiRequest<SesionActual>('/authentication/sesion', { token });
+export function getSesionActual(token: string, timeoutMs?: number) {
+  return apiRequest<SesionActual>('/authentication/sesion', { token, timeoutMs });
 }

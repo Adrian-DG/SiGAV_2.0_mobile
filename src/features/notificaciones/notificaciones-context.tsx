@@ -3,7 +3,7 @@ import { createContext, use, useEffect, useMemo, useState, type PropsWithChildre
 import { Alert, AppState } from 'react-native';
 
 import { useSession } from '@/contexts/auth-context';
-import { apiConfig } from '@/lib/api-config';
+import { apiConfig, apiConfigError } from '@/lib/api-config';
 
 import { mostrarAlerta, prepararAlertas } from './alertas';
 
@@ -48,7 +48,7 @@ export function NotificacionesProvider({ children }: PropsWithChildren) {
   const [versionEventos, setVersionEventos] = useState(0);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || apiConfigError) return;
     void prepararAlertas();
 
     const hub = new HubConnectionBuilder()

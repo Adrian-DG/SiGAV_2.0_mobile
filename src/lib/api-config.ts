@@ -92,8 +92,30 @@ function resolveConfig(): ApiConfig {
   }
 }
 
+/**
+ * Un error de configuración (p. ej. un build de release sin EXPO_PUBLIC_API_URL_PRODUCTION) no debe
+ * lanzarse al cargar el módulo: lo importa el layout raíz y la app quedaría congelada en el splash
+ * sin mostrar nada. Se guarda aquí y apiRequest lo devuelve como error de cada petición (el login
+ * lo muestra).
+ */
+function loadConfig(): { config: ApiConfig; error: string | null } {
+  try {
+    return { config: resolveConfig(), error: null };
+  } catch (error) {
+    return {
+      config: { environment: 'production', baseUrl: '', headers: {} },
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+const loaded = loadConfig();
+
 /** Resuelta una vez al cargar la app: cambiar de ambiente requiere recargarla. */
-export const apiConfig: ApiConfig = resolveConfig();
+export const apiConfig: ApiConfig = loaded.config;
+
+/** Motivo por el que no hay API configurada; null si la configuración es válida. */
+export const apiConfigError: string | null = loaded.error;
 
 export const API_ENVIRONMENT_LABELS: Record<ApiEnvironment, string> = {
   local: 'Local',

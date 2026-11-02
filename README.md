@@ -23,8 +23,8 @@ App de campo de Asistencia Vial para las unidades (Expo SDK 57 · React Native �
 3. Iniciar eligiendo la API (no usar `npx expo start` ni `npx expo run:android` directos: no definen el ambiente y la app cae en `local`):
 
    ```bash
-   npm run android:tunnel            # Metro → Dev Tunnel y abre la app en el teléfono (USB)
-   npm run android:tunnel -- --build # además compila e instala la app (cambios nativos)
+   npm run android:tunnel            # Metro → Dev Tunnel y abre la app nativa en el teléfono (USB); si no está instalada, la compila
+   npm run android:tunnel -- --build # fuerza compilar e instalar la app (cambios nativos)
    npm run android:local             # lo mismo contra la API de esta PC
    npm run start:tunnel              # solo Metro (start:local | start:prod)
    ```

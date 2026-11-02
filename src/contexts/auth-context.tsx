@@ -9,6 +9,12 @@ import { secureStorage } from '@/lib/storage';
 
 const SESION_EXPIRADA = 'Su sesión expiró. Inicie sesión nuevamente.';
 
+/**
+ * Al abrir la app solo se confirma que el token no fue revocado: sin respuesta pronto (señal mala,
+ * API caída) se sigue con el token guardado en vez de dejar al agente esperando en el splash.
+ */
+const VERIFICACION_SESION_TIMEOUT_MS = 6_000;
+
 type AuthContextValue = {
   session: Session | null;
   isLoading: boolean;
@@ -35,7 +41,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    restoreSession({ storage: secureStorage, verificarToken: getSesionActual })
+    restoreSession({
+      storage: secureStorage,
+      verificarToken: (token) => getSesionActual(token, VERIFICACION_SESION_TIMEOUT_MS),
+    })
       .then(setSession)
       .catch(() => setSession(null))
       .finally(() => setIsLoading(false));

@@ -3,8 +3,9 @@
  * Arranca Metro apuntando la app a una API: local, dev_tunnel o production.
  *
  *   npm run start:local | start:tunnel | start:prod      solo Metro (abrir la app a mano)
- *   npm run android:local | android:tunnel                Metro y abre la app en el teléfono (USB)
- *   npm run android:tunnel -- --build                     además compila e instala la app antes
+ *   npm run android:local | android:tunnel                Metro y abre la app nativa en el teléfono (USB);
+ *                                                         si no está instalada, la compila e instala antes
+ *   npm run android:tunnel -- --build                     fuerza compilar e instalar (cambios nativos)
  *   npm run start:tunnel -- --android                     el resto de argumentos va a `expo start`
  *
  * Define EXPO_PUBLIC_API_ENV en el proceso (tiene prioridad sobre los .env) y verifica que la
@@ -17,7 +18,7 @@
  * No usar `npx expo start` ni `npx expo run:android` directamente: no definen el ambiente y en
  * desarrollo la app cae en "local".
  */
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -40,7 +41,7 @@ if (!config) {
 }
 
 // --build: compilar e instalar la app nativa antes de arrancar Metro (expo run:android)
-const compilar = resto.includes('--build');
+let compilar = resto.includes('--build');
 const expoArgs = resto.filter((a) => a !== '--build');
 
 /** Lectura mínima de .env/.env.local, solo para validar y mostrar la URL (Expo los carga por su cuenta). */
@@ -101,6 +102,92 @@ function expo(args) {
   });
 }
 
+/** Paquete Android de la app (app.json → expo.android.package). */
+function paqueteAndroid() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(RAIZ, 'app.json'), 'utf8')).expo.android.package;
+  } catch {
+    return null;
+  }
+}
+
+function adb(args) {
+  return spawnSync('adb', args, { encoding: 'utf8' });
+}
+
+/**
+ * ¿Está instalada la app nativa en el teléfono conectado? true/false, o null si no se puede saber
+ * (sin adb, sin teléfono o varios conectados): en ese caso no se decide nada por el usuario.
+ */
+function appInstalada(paquete) {
+  const r = adb(['shell', 'pm', 'list', 'packages', paquete]);
+  if (r.error || r.status !== 0) return null;
+  return r.stdout.split(/\r?\n/).some((linea) => linea.trim() === `package:${paquete}`);
+}
+
+/** Puerto de Metro: el de --port/-p si se pasó, si no el de Expo por defecto. */
+function puertoMetro() {
+  const i = expoArgs.findIndex((a) => a === '--port' || a === '-p');
+  return (i >= 0 && Number(expoArgs[i + 1])) || 8081;
+}
+
+/** Espera a que Metro responda (máx. ~2 min); false si no arrancó. */
+async function esperarMetro(puerto) {
+  for (let intento = 0; intento < 120; intento++) {
+    try {
+      const res = await fetch(`http://localhost:${puerto}/status`);
+      if ((await res.text()).includes('packager-status:running')) return true;
+    } catch {
+      // Todavía no escucha
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  return false;
+}
+
+/**
+ * Abre la app nativa de SiGAV en el teléfono (USB) contra este Metro. No se usa `expo start
+ * --android`: sin el paquete expo-dev-client, Expo CLI abre siempre Expo Go, que no trae los
+ * módulos nativos de la app (OCR de ML Kit, ubicación en segundo plano…) y falla al cargar.
+ * El build debug busca el bundle en localhost:8081 del teléfono; `adb reverse` lo lleva a esta PC.
+ */
+async function abrirEnAndroid(paquete, puerto) {
+  if (!(await esperarMetro(puerto))) {
+    console.error('\n✖ Metro no respondió: no se pudo abrir la app en el teléfono.\n');
+    return;
+  }
+  const reverse = adb(['reverse', 'tcp:8081', `tcp:${puerto}`]);
+  if (reverse.error || reverse.status !== 0) {
+    console.error('\n✖ No se pudo preparar el teléfono (adb reverse). ¿Está conectado por USB con depuración activa?\n');
+    return;
+  }
+  // -S: cierra la instancia anterior para que cargue el bundle nuevo
+  adb(['shell', 'am', 'start', '-S', '-n', `${paquete}/.MainActivity`]);
+  console.log(`\n▶ App abierta en el teléfono (${paquete}).\n`);
+}
+
+const abrirAndroid = expoArgs.includes('--android');
+const startArgs = expoArgs.filter((a) => a !== '--android');
+const paquete = abrirAndroid ? paqueteAndroid() : null;
+
+if (abrirAndroid && !paquete) {
+  console.error('✖ No se encontró expo.android.package en app.json.');
+  process.exit(1);
+}
+
+// Sin la app nativa instalada no hay nada que abrir: se compila e instala primero
+if (abrirAndroid && !compilar) {
+  const instalada = appInstalada(paquete);
+  if (instalada === null) {
+    console.error('✖ No se encontró un teléfono por adb. Conéctelo por USB con depuración activa (adb devices).');
+    process.exit(1);
+  }
+  if (!instalada) {
+    console.log(`  La app (${paquete}) no está instalada en el teléfono: se compila e instala primero.\n`);
+    compilar = true;
+  }
+}
+
 (async () => {
   if (compilar) {
     // Solo compila e instala: Metro se arranca después, con el ambiente y la caché resueltos aquí
@@ -108,5 +195,7 @@ function expo(args) {
     if (code !== 0) process.exit(code);
   }
   guardarAmbiente();
-  process.exit(await expo(['start', ...expoArgs]));
+  const metro = expo(['start', ...startArgs]);
+  if (abrirAndroid) void abrirEnAndroid(paquete, puertoMetro());
+  process.exit(await metro);
 })();

@@ -1,4 +1,4 @@
-import { apiConfig } from '@/lib/api-config';
+import { apiConfig, apiConfigError } from '@/lib/api-config';
 import { verificarConexion } from '@/lib/conexion';
 
 /** Matches the { message, errors } shape written by Presentation/Middleware/ApiExceptionHandler.cs. */
@@ -67,6 +67,9 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', query, body, token, timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
+
+  // Build sin URL de API (ver api-config.ts): no hay a dónde enviar la petición
+  if (apiConfigError) throw new ApiError(NETWORK_ERROR_STATUS, `La app no tiene configurada la API. ${apiConfigError}`);
 
   // Sin conexión no se intenta: se evita esperar el timeout completo para fallar igual
   const conexion = await verificarConexion(apiConfig.environment);

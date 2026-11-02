@@ -1,3 +1,4 @@
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Notifications from 'expo-notifications';
 import { Platform, Vibration } from 'react-native';
 
@@ -6,13 +7,34 @@ import { Platform, Vibration } from 'react-native';
  * Android no deja cambiar el sonido de un canal ya creado: si cambia el tono o cómo suena, el
  * canal necesita un id nuevo (y quitar el anterior en CANALES_ANTERIORES).
  */
-const CANAL = 'centro-operaciones-alerta';
-const CANALES_ANTERIORES = ['centro-operaciones'];
+const CANAL = 'centro-operaciones-alerta-aguda';
+const CANALES_ANTERIORES = ['centro-operaciones', 'centro-operaciones-alerta'];
 
-/** Tono del aviso (assets/sounds, incluido en la app por el plugin de expo-notifications en app.json). */
-const TONO = 'alerta_centro.wav';
+/**
+ * Tono del aviso (assets/sounds, incluido en la app por el plugin de expo-notifications en app.json):
+ * pitido agudo que alterna 2,9 y 3,5 kHz en tres ráfagas (~3 s), para que se distinga en la calle.
+ */
+const TONO = 'alerta_aguda.wav';
 
-const VIBRACION = [0, 500, 200, 500, 200, 500];
+/** Espera inicial y luego vibra/pausa, en ms: tres pulsos largos, a la par de las ráfagas del tono. */
+const VIBRACION = [0, 700, 250, 700, 250, 700];
+
+let reproductor: AudioPlayer | null = null;
+
+/**
+ * Reproduce el tono desde la app, sin pasar por la notificación: solo cuando esta no puede sonar
+ * (sin permiso). Suena aunque el teléfono esté en silencio.
+ */
+async function sonarTono(): Promise<void> {
+  try {
+    await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' });
+    reproductor ??= createAudioPlayer(require('@/assets/sounds/alerta_aguda.wav'));
+    await reproductor.seekTo(0);
+    reproductor.play();
+  } catch {
+    // Sin audio queda la vibración
+  }
+}
 
 let preparado: Promise<boolean> | null = null;
 
@@ -69,12 +91,17 @@ export function prepararAlertas(): Promise<boolean> {
 }
 
 /**
- * Muestra el aviso en la barra del teléfono al momento, con el tono del centro de operaciones.
- * Devuelve false si no hay permiso (entonces al menos vibra).
+ * Muestra el aviso en la barra del teléfono al momento, con el tono agudo y vibración.
+ * Devuelve false si no hay permiso (entonces el tono lo reproduce la propia app).
+ *
+ * Los avisos llegan por SignalR, que solo está conectado con la app abierta: la vibración se pide
+ * también aquí porque algunas capas de Android (p. ej. MIUI) no vibran con la notificación de la
+ * app que está en primer plano.
  */
 export async function mostrarAlerta(titulo: string, cuerpo: string, data: Record<string, unknown> = {}): Promise<boolean> {
+  if (Platform.OS !== 'web') Vibration.vibrate(VIBRACION);
   if (!(await prepararAlertas())) {
-    Vibration.vibrate(VIBRACION);
+    await sonarTono();
     return false;
   }
   try {
@@ -86,7 +113,7 @@ export async function mostrarAlerta(titulo: string, cuerpo: string, data: Record
     });
     return true;
   } catch {
-    Vibration.vibrate(VIBRACION);
+    await sonarTono();
     return false;
   }
 }

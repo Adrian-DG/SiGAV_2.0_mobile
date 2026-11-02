@@ -12,8 +12,9 @@ export default function RootLayout() {
   return (
     <SQLiteProvider databaseName="sigav.db" onInit={migrateDbIfNeeded}>
       <AuthProvider>
-        <SplashScreenController />
         <RootNavigator />
+        {/* Después del navegador: se dibuja encima mientras se restaura la sesión */}
+        <SplashScreenController />
       </AuthProvider>
     </SQLiteProvider>
   );

@@ -13,17 +13,21 @@ import { useToast } from '@/components/ui/toast';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Palette } from '@/constants/colors';
 import { useSession } from '@/contexts/auth-context';
+import { AvisoVencimiento } from '@/features/auth/aviso-vencimiento';
 import { completarEvento, getDenominacionActual, getEstadisticasEventosHoy } from '@/features/events/api';
 import { agentesDeLaUnidad, describirAgente } from '@/lib/jwt';
 import { EventCard } from '@/features/events/components/event-card';
+import { PendientesOtrasSesiones } from '@/features/events/components/pendientes-otras-sesiones';
 import { UnitSummaryCard } from '@/features/events/components/unit-summary-card';
 import { describirError, enviarEventoLocal } from '@/features/events/local/enviar-evento';
 import {
   asignadosEnDispositivo,
   cerrarEventoLocal,
   contarEventosLocales,
+  descartarEventoLocal,
   ESTATUS_LOCAL_LABELS,
   listarEventosLocales,
+  retirarAsignadosNoVigentes,
   type EstatusLocal,
   type EventoLocalListItem,
 } from '@/features/events/local/eventos-local';
@@ -35,6 +39,7 @@ import { EventoAsignadoCard } from '@/features/events/asignados/evento-asignado-
 import { useNotificaciones } from '@/features/notificaciones/notificaciones-context';
 import { EstadoUbicacion } from '@/features/posicion/components/estado-ubicacion';
 import { reportarOcupacion } from '@/features/posicion/seguimiento';
+import { borrarFoto } from '@/features/scan/fotos';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 
 const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
@@ -161,8 +166,21 @@ export default function HomeScreen() {
     if (!token) return;
     let cancelled = false;
     getEventosAsignados(token)
-      .then((items) => {
-        if (!cancelled) setAsignados(items);
+      .then(async (items) => {
+        if (cancelled) return;
+        setAsignados(items);
+        if (!agenteId || !unidadId) return;
+        // Los que ya se trajeron al teléfono y el centro anuló, completó o reasignó: ya no se pueden enviar
+        const retirados = await retirarAsignadosNoVigentes(db, { agenteId, unidadId }, items.map((i) => i.id));
+        if (retirados.serverIds.length === 0) return;
+        retirados.fotos.forEach(borrarFoto);
+        const numeros = retirados.serverIds.map((id) => `No. ${id}`).join(', ');
+        Alert.alert(
+          retirados.serverIds.length === 1 ? 'Evento retirado' : 'Eventos retirados',
+          `El centro de operaciones anuló, completó o reasignó ${retirados.serverIds.length === 1 ? 'el evento' : 'los eventos'} ${numeros}. ` +
+            'Se quitaron de este teléfono: ya no debe atenderlos.',
+        );
+        if (!cancelled) setRefreshNonce((n) => n + 1);
       })
       .catch(() => {
         // Sin conexión se conservan los últimos que se vieron
@@ -170,7 +188,7 @@ export default function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, [token, refreshNonce, versionEventos]);
+  }, [db, token, agenteId, unidadId, refreshNonce, versionEventos]);
 
   const refetchAll = () => setRefreshNonce((n) => n + 1);
 
@@ -285,6 +303,30 @@ export default function HomeScreen() {
     }
   }
 
+  /** Borra del teléfono un evento propio sin enviar (registrado por error o duplicado). */
+  function descartar(item: EventoLocalListItem) {
+    if (!sesion) return;
+    Alert.alert(
+      '¿Descartar el evento?',
+      'Se borrará de este teléfono con sus vehículos, personas y fotos. No se enviará al centro y no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Descartar',
+          style: 'destructive',
+          onPress: () =>
+            void descartarEventoLocal(db, item.localId, sesion)
+              .then((fotos) => {
+                fotos.forEach(borrarFoto);
+                toast.mostrar({ mensaje: 'Evento descartado', icono: 'exito' });
+              })
+              .catch((error) => Alert.alert('No se pudo descartar', describirError(error)))
+              .finally(refetchAll),
+        },
+      ],
+    );
+  }
+
   async function cerrar(item: EventoLocalListItem, tipoCierreId: number) {
     await cerrarEventoLocal(db, item.localId, tipoCierreId);
     refetchAll();
@@ -362,7 +404,9 @@ export default function HomeScreen() {
                 onVerEstadisticas={() => router.push('/estadisticas')}
               />
             )}
+            {!!token && <AvisoVencimiento token={token} />}
             {!!token && <EstadoUbicacion token={token} />}
+            {!!sesion && <PendientesOtrasSesiones db={db} sesion={sesion} version={refreshNonce} />}
             {!!token && pendientesDeEditar.length > 0 && (
               <View style={styles.asignados}>
                 <Text style={styles.asignadosTitulo}>
@@ -400,6 +444,7 @@ export default function HomeScreen() {
             onEditar={() => router.push({ pathname: '/events/[id]', params: { id: String(item.localId) } })}
             onCerrar={(tipoCierreId) => cerrar(item, tipoCierreId)}
             onEnviar={() => enviar(item)}
+            onDescartar={item.serverId == null ? () => descartar(item) : undefined}
           />
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}

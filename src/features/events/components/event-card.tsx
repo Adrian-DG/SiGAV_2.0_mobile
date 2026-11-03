@@ -36,6 +36,8 @@ type EventCardProps = {
   onCerrar: (tipoCierreId: number) => Promise<void>;
   /** Envía el evento cerrado a la API. */
   onEnviar: () => Promise<void>;
+  /** Borra el evento del dispositivo (pide confirmación). Solo los propios: un asignado lo anula el centro. */
+  onDescartar?: () => void;
 };
 
 /**
@@ -44,7 +46,7 @@ type EventCardProps = {
  *  - por enviar: Editar · Enviar (y cambiar el tipo de cierre)
  *  - enviado:    solo lectura
  */
-export function EventCard({ item, agenteAtiende, onEditar, onCerrar, onEnviar }: EventCardProps) {
+export function EventCard({ item, agenteAtiende, onEditar, onCerrar, onEnviar, onDescartar }: EventCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [cerrarVisible, setCerrarVisible] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -113,6 +115,10 @@ export function EventCard({ item, agenteAtiende, onEditar, onCerrar, onEnviar }:
           )}
           {item.estatus === 'por_enviar' && (
             <Button label="Cambiar tipo de cierre" variant="ghost" onPress={() => setCerrarVisible(true)} />
+          )}
+          {/* Dentro del detalle y no junto a Editar/Cerrar: así no se toca por error */}
+          {!!onDescartar && item.estatus !== 'enviado' && (
+            <Button label="Descartar evento" icon="quitar" variant="ghost" onPress={onDescartar} disabled={enviando} />
           )}
         </View>
       )}

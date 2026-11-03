@@ -43,6 +43,12 @@ function readPayload(token: string): JwtPayload | null {
  * true si el token venció o no se puede leer. Se aplica un margen para no usar un token que
  * vencería durante la petición.
  */
+/** Momento (ms desde epoch) en que vence el token, o null si no lo indica. */
+export function vencimientoToken(token: string): number | null {
+  const exp = readPayload(token)?.exp;
+  return exp ? exp * 1000 : null;
+}
+
 export function isTokenExpired(token: string, marginSeconds = 30): boolean {
   const exp = readPayload(token)?.exp;
   if (!exp) return true;

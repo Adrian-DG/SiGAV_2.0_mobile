@@ -48,7 +48,7 @@ import {
   type InvolucradoForm,
   type VehiculoForm,
 } from '@/features/events/form/evento-form';
-import type { TipoEventoInfo } from '@/features/events/local/eventos-local';
+import type { SesionEvento, TipoEventoInfo } from '@/features/events/local/eventos-local';
 import { RolCiudadanoValue, type RolCiudadano } from '@/features/events/types';
 import { useCatalogo } from '@/hooks/use-catalogo';
 import { useUbicacionActual } from '@/hooks/use-ubicacion-actual';
@@ -79,8 +79,11 @@ type EventoFormularioProps = {
   mensajeGuardado: string;
   /** Mensaje informativo arriba del formulario (p. ej. el evento ya tiene tipo de cierre). */
   aviso?: string | null;
-  /** Guarda en el dispositivo. Si lanza un error, se muestra y el formulario sigue abierto. */
-  onGuardar: (form: EventoForm, tipos: TipoEventoInfo[]) => Promise<void>;
+  /**
+   * Guarda en el dispositivo para `sesion` (la del agente y la unidad con que se abrió el formulario).
+   * Si lanza un error, se muestra y el formulario sigue abierto.
+   */
+  onGuardar: (form: EventoForm, tipos: TipoEventoInfo[], sesion: SesionEvento | null) => Promise<void>;
 };
 
 const iguales = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -101,8 +104,15 @@ export function EventoFormulario({
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const toast = useToast();
-  const { session } = useSession();
-  const token = session!.token;
+  const { session: sesionActual } = useSession();
+  // La sesión con que se abrió: si se cierra a la fuerza (token vencido o revocado), el formulario
+  // aún se dibuja antes de desmontarse y lo registrado se guarda para ese agente y esa unidad
+  const [session] = useState(sesionActual!);
+  const token = session.token;
+  const sesionEvento: SesionEvento | null =
+    session.agente.agenteId && session.agente.unidadId
+      ? { agenteId: session.agente.agenteId, unidadId: session.agente.unidadId }
+      : null;
   // Registrar toma el GPS; editar trabaja sobre un evento ya guardado
   const esNuevo = capturarUbicacion;
 
@@ -148,22 +158,24 @@ export function EventoFormulario({
 
   // Con componente se elige cuál de los dos atiende. Si el evento quedó asignado a un agente que ya
   // no opera la unidad (se inició sesión con otro componente), pasa al agente de la sesión.
-  const agentesUnidad = agentesDeLaUnidad(session!.agente);
+  const agentesUnidad = agentesDeLaUnidad(session.agente);
   const agenteAtiendeId = agentesUnidad.some((a) => a.agenteId === form.agenteAtiendeId)
     ? form.agenteAtiendeId!
-    : session!.agente.agenteId;
+    : session.agente.agenteId;
 
   const ubicacion = capturarUbicacion ? gps.ubicacion : form.ubicacion;
   const formCompleto: EventoForm = {
     ...form,
     ubicacion,
-    agenteAtiendeId: agenteAtiendeId === session!.agente.agenteId ? null : agenteAtiendeId,
+    agenteAtiendeId: agenteAtiendeId === session.agente.agenteId ? null : agenteAtiendeId,
   };
   const errors = intento ? validarEvento(formCompleto, prefijos.items) : {};
 
   // ------------------------------------------------------------------ Salir sin perder datos
 
   const hayCambios = editor !== null || !iguales(form, base);
+  // El agente eligió descartar: al desmontarse no se guarda nada
+  const descartado = useRef(false);
 
   // Cubre la ✕, el botón "atrás" de Android y el gesto de volver de iOS. Con el editor abierto,
   // "atrás" cierra el editor (no el evento).
@@ -183,10 +195,35 @@ export function EventoFormulario({
         : 'Se perderán los cambios que no ha guardado.',
       [
         { text: 'Seguir editando', style: 'cancel' },
-        { text: 'Descartar', style: 'destructive', onPress: () => navigation.dispatch(data.action) },
+        {
+          text: 'Descartar',
+          style: 'destructive',
+          onPress: () => {
+            descartado.current = true;
+            navigation.dispatch(data.action);
+          },
+        },
       ],
     );
   });
+
+  // Toda salida del agente pasa por la pregunta de arriba (descartar) o por guardar. Si el formulario
+  // se desmonta con cambios sin ninguna de las dos, lo cerró la app (la sesión venció o fue revocada):
+  // se guarda lo registrado para no perderlo. Queda en «En curso» al volver a entrar con la misma cédula y ficha.
+  const guardarAlSalir = useRef<(() => void) | null>(null);
+  guardarAlSalir.current =
+    hayCambios && !guardado
+      ? () =>
+          void onGuardar(formCompleto, tiposInfoDe(formCompleto), sesionEvento).catch(() => {
+            // Incompleto para guardarse (p. ej. sin municipio): no hay a quién mostrar el error
+          })
+      : null;
+  useEffect(
+    () => () => {
+      if (!descartado.current) guardarAlSalir.current?.();
+    },
+    [],
+  );
 
   // Guardado: ya se puede salir (usePreventRemove necesita un render con `guardado` antes de volver)
   useEffect(() => {
@@ -219,6 +256,13 @@ export function EventoFormulario({
     }),
   ].filter((p): p is Problema => !!p);
 
+  function tiposInfoDe(f: EventoForm): TipoEventoInfo[] {
+    const ids = tiposDelEvento(f);
+    return tipos.items
+      .filter((t: TipoEventoItem) => ids.includes(t.id))
+      .map((t: TipoEventoItem) => ({ id: t.id, nombre: t.nombre, categoria: t.categoria }));
+  }
+
   async function guardar() {
     setIntento(true);
     setErrorGuardar(null);
@@ -230,11 +274,7 @@ export function EventoFormulario({
 
     setGuardando(true);
     try {
-      const ids = tiposDelEvento(formCompleto);
-      const tiposInfo: TipoEventoInfo[] = tipos.items
-        .filter((t: TipoEventoItem) => ids.includes(t.id))
-        .map((t: TipoEventoItem) => ({ id: t.id, nombre: t.nombre, categoria: t.categoria }));
-      await onGuardar(formCompleto, tiposInfo);
+      await onGuardar(formCompleto, tiposInfoDe(formCompleto), sesionEvento);
       await secureStorage
         .setItem(ULTIMO_MUNICIPIO_KEY, JSON.stringify({ provinciaId: form.provinciaId, municipioId: form.municipioId }))
         .catch(() => {});
@@ -470,7 +510,7 @@ export function EventoFormulario({
                   onReintentar={gps.reintentar}
                 />
                 <Text style={styles.contexto}>
-                  Unidad {session!.agente.ficha} · Llegada{' '}
+                  Unidad {session.agente.ficha} · Llegada{' '}
                   {new Date(form.fechaHoraLlegada).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}
                 </Text>
                 {agentesUnidad.length > 1 ? (
@@ -485,7 +525,7 @@ export function EventoFormulario({
                           onPress={() =>
                             setForm((f) => ({
                               ...f,
-                              agenteAtiendeId: agente.agenteId === session!.agente.agenteId ? null : agente.agenteId,
+                              agenteAtiendeId: agente.agenteId === session.agente.agenteId ? null : agente.agenteId,
                             }))
                           }
                         />
@@ -493,7 +533,7 @@ export function EventoFormulario({
                     </View>
                   </View>
                 ) : (
-                  <Text style={styles.contexto}>Atiende: {describirAgente(session!.agente)}</Text>
+                  <Text style={styles.contexto}>Atiende: {describirAgente(session.agente)}</Text>
                 )}
               </Card>
 

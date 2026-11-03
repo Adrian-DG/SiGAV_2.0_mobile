@@ -351,6 +351,78 @@ export async function registrarErrorEnvio(db: LocalDb, localId: number, mensaje:
   await db.runAsync('UPDATE eventos SET sync_error = ? WHERE id = ? AND synced = 0', mensaje, localId);
 }
 
+/**
+ * Descarta un evento que registró el agente y aún no envió (p. ej. guardado por error o duplicado).
+ * Los asignados por el centro no se descartan aquí: los anula el centro. Devuelve las fotos que
+ * tenía, para borrarlas del teléfono.
+ */
+export async function descartarEventoLocal(db: LocalDb, localId: number, sesion: SesionEvento): Promise<string[]> {
+  const fila = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM eventos WHERE id = ? AND agente_id = ? AND unidad_id = ? AND synced = 0 AND server_id IS NULL',
+    localId,
+    sesion.agenteId,
+    sesion.unidadId,
+  );
+  if (!fila) throw new EventoNoEditableError();
+  return borrarEventos(db, [localId]);
+}
+
+/**
+ * Quita del dispositivo los asignados sin enviar que el centro ya no tiene abiertos para la unidad
+ * (anulados, completados o reasignados): enviarlos fallaría siempre y bloquearían el cierre de sesión.
+ * `vigentes`: números de los asignados que devolvió la API. Devuelve los números retirados y sus fotos.
+ */
+export async function retirarAsignadosNoVigentes(
+  db: LocalDb,
+  sesion: SesionEvento,
+  vigentes: number[],
+): Promise<{ serverIds: number[]; fotos: string[] }> {
+  const filas = await db.getAllAsync<{ id: number; server_id: number }>(
+    'SELECT id, server_id FROM eventos WHERE agente_id = ? AND unidad_id = ? AND server_id IS NOT NULL AND synced = 0',
+    sesion.agenteId,
+    sesion.unidadId,
+  );
+  const retirar = filas.filter((f) => !vigentes.includes(f.server_id));
+  if (retirar.length === 0) return { serverIds: [], fotos: [] };
+  const fotos = await borrarEventos(db, retirar.map((f) => f.id));
+  return { serverIds: retirar.map((f) => f.server_id), fotos };
+}
+
+/** Borra eventos sin enviar con sus tipos, vehículos y personas; devuelve las fotos que tenían. */
+async function borrarEventos(db: LocalDb, ids: number[]): Promise<string[]> {
+  const marcadores = ids.map(() => '?').join(', ');
+  const fotos = await db.getAllAsync<{ foto_uri: string }>(
+    `SELECT foto_uri FROM evento_vehiculos WHERE evento_id IN (${marcadores}) AND foto_uri IS NOT NULL
+     UNION ALL
+     SELECT foto_uri FROM evento_ciudadanos WHERE evento_id IN (${marcadores}) AND foto_uri IS NOT NULL`,
+    ...ids,
+    ...ids,
+  );
+  // Sin depender de ON DELETE CASCADE: la conexión no activa PRAGMA foreign_keys
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM evento_tipos WHERE evento_id IN (${marcadores})`, ...ids);
+    await db.runAsync(`DELETE FROM evento_ciudadanos WHERE evento_id IN (${marcadores})`, ...ids);
+    await db.runAsync(`DELETE FROM evento_vehiculos WHERE evento_id IN (${marcadores})`, ...ids);
+    await db.runAsync(`DELETE FROM eventos WHERE id IN (${marcadores}) AND synced = 0`, ...ids);
+  });
+  return fotos.map((f) => f.foto_uri);
+}
+
+/**
+ * Eventos sin enviar de otras sesiones (otro agente o unidad) que siguen en el teléfono, p. ej.
+ * porque la sesión venció antes de enviarlos. Solo pueden enviarse iniciando sesión con esa unidad y agente.
+ */
+export async function pendientesDeOtrasSesiones(db: LocalDb, sesion: SesionEvento): Promise<(SesionEvento & { total: number })[]> {
+  const filas = await db.getAllAsync<{ agente_id: number; unidad_id: number; total: number }>(
+    `SELECT agente_id, unidad_id, COUNT(*) AS total FROM eventos
+     WHERE synced = 0 AND NOT (agente_id = ? AND unidad_id = ?)
+     GROUP BY agente_id, unidad_id`,
+    sesion.agenteId,
+    sesion.unidadId,
+  );
+  return filas.map((f) => ({ agenteId: f.agente_id, unidadId: f.unidad_id, total: f.total }));
+}
+
 // ------------------------------------------------------------------ Lectura
 
 /** Eventos de la sesión con ese estatus; más recientes primero. */

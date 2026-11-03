@@ -89,9 +89,9 @@ export default function EditEventScreen() {
           .filter(Boolean)
           .join('\n') || null
       }
-      onGuardar={async (form, tipos) => {
-        if (!sesion) throw new Error('La sesión no tiene agente o unidad: vuelva a iniciar sesión.');
-        await guardarEventoLocal(db, form, sesion, tipos, new Date(), evento.localId);
+      onGuardar={async (form, tipos, sesionForm) => {
+        if (!sesionForm) throw new Error('La sesión no tiene agente o unidad: vuelva a iniciar sesión.');
+        await guardarEventoLocal(db, form, sesionForm, tipos, new Date(), evento.localId);
       }}
     />
   );

@@ -1,6 +1,7 @@
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
 import { getSesionActual, loginMovil } from '@/features/auth/api';
+import { recordarSesion } from '@/features/auth/sesiones-conocidas';
 import { clearSession, persistSession, restoreSession, sesionDesdeToken, type Session } from '@/features/auth/session-store';
 import { cerrarSesionMovil } from '@/features/posicion/api';
 import { detenerSeguimiento, iniciarSeguimiento } from '@/features/posicion/seguimiento';
@@ -45,7 +46,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       storage: secureStorage,
       verificarToken: (token) => getSesionActual(token, VERIFICACION_SESION_TIMEOUT_MS),
     })
-      .then(setSession)
+      .then((restaurada) => {
+        if (restaurada) void recordarSesion(restaurada.agente);
+        setSession(restaurada);
+      })
       .catch(() => setSession(null))
       .finally(() => setIsLoading(false));
   }, []);
@@ -78,6 +82,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // Agente y unidad vienen en el token: no hace falta otra petición para conocerlos
         const nueva = sesionDesdeToken(token);
         await persistSession(secureStorage, nueva);
+        await recordarSesion(nueva.agente);
         setNotice(null);
         setSession(nueva);
       },

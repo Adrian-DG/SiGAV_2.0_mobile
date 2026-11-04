@@ -1,5 +1,7 @@
 import * as Crypto from 'expo-crypto';
+import * as Location from 'expo-location';
 import { useNavigation, useRouter } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -23,6 +25,7 @@ import {
   listarPrefijosPlaca,
   listarProvincias,
   listarTiposEvento,
+  municipioDeLugar,
 } from '@/features/catalogos/local/catalogos-local';
 import { InvolucradoEditor } from '@/features/events/components/involucrado-editor';
 import { nombresTipos, TiposEventoSelector } from '@/features/events/components/tipos-evento-selector';
@@ -80,6 +83,11 @@ type EventoFormularioProps = {
   /** Mensaje informativo arriba del formulario (p. ej. el evento ya tiene tipo de cierre). */
   aviso?: string | null;
   /**
+   * Permite ajustar la hora de llegada (p. ej. se abrió el formulario en camino o después de atender).
+   * Solo en los eventos propios sin cerrar: la de un asignado la registra el centro.
+   */
+  llegadaEditable?: boolean;
+  /**
    * Guarda en el dispositivo para `sesion` (la del agente y la unidad con que se abrió el formulario).
    * Si lanza un error, se muestra y el formulario sigue abierto.
    */
@@ -98,6 +106,7 @@ export function EventoFormulario({
   textoGuardar,
   mensajeGuardado,
   aviso,
+  llegadaEditable = false,
   onGuardar,
 }: EventoFormularioProps) {
   const router = useRouter();
@@ -158,6 +167,30 @@ export function EventoFormulario({
       })
       .catch(() => {});
   }, [inicial.municipioId]);
+
+  // Un evento nuevo: con la ubicación lista se sugiere el municipio (geocodificación del teléfono,
+  // requiere red). Una sola vez, y nunca sobre un lugar que el agente eligió a mano.
+  const db = useSQLiteContext();
+  const lugarElegido = useRef(inicial.municipioId != null);
+  const sugerido = useRef(false);
+  const [municipioPorGps, setMunicipioPorGps] = useState(false);
+  const gpsLista = esNuevo && gps.estado === 'lista' ? gps.ubicacion : null;
+  useEffect(() => {
+    if (!gpsLista || sugerido.current || lugarElegido.current || Platform.OS === 'web') return;
+    sugerido.current = true;
+    Location.reverseGeocodeAsync({ latitude: gpsLista.latitud, longitude: gpsLista.longitud })
+      .then(([lugar]) => (lugar ? municipioDeLugar(db, lugar) : null))
+      .then((encontrado) => {
+        if (!encontrado || lugarElegido.current) return;
+        const aplicar = (f: EventoForm) => ({ ...f, ...encontrado });
+        setForm(aplicar);
+        setBase(aplicar);
+        setMunicipioPorGps(true);
+      })
+      .catch(() => {
+        // Sin red o sin geocodificador: queda el último municipio usado
+      });
+  }, [db, gpsLista]);
 
   // Con componente se elige cuál de los dos atiende. Si el evento quedó asignado a un agente que ya
   // no opera la unidad (se inició sesión con otro componente), pasa al agente de la sesión.
@@ -511,6 +544,7 @@ export function EventoFormulario({
                   capturar={capturarUbicacion || recapturar}
                   estado={gps.estado}
                   ubicacion={ubicacion}
+                  conservaGuardada={!capturarUbicacion && recapturar && !!form.ubicacion}
                   onReintentar={gps.reintentar}
                 />
                 {!capturarUbicacion && !recapturar && (
@@ -520,6 +554,12 @@ export function EventoFormulario({
                   Unidad {session.agente.ficha} · Llegada{' '}
                   {new Date(form.fechaHoraLlegada).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}
                 </Text>
+                {llegadaEditable && (
+                  <AjusteLlegada
+                    valor={form.fechaHoraLlegada}
+                    onChange={(fechaHoraLlegada) => setForm((f) => ({ ...f, fechaHoraLlegada }))}
+                  />
+                )}
                 {agentesUnidad.length > 1 ? (
                   <View style={styles.agentes}>
                     <Text style={styles.fieldLabel}>¿Quién atiende?</Text>
@@ -552,7 +592,11 @@ export function EventoFormulario({
                   options={provincias.items}
                   loading={provincias.cargando}
                   value={form.provinciaId}
-                  onChange={(id) => setForm((f) => ({ ...f, provinciaId: id, municipioId: null }))}
+                  onChange={(id) => {
+                    lugarElegido.current = true;
+                    setMunicipioPorGps(false);
+                    setForm((f) => ({ ...f, provinciaId: id, municipioId: null }));
+                  }}
                 />
                 <SelectField
                   label="Municipio"
@@ -561,9 +605,14 @@ export function EventoFormulario({
                   loading={municipios.cargando}
                   disabled={!form.provinciaId}
                   value={form.municipioId}
-                  onChange={(id) => setForm((f) => ({ ...f, municipioId: id }))}
+                  onChange={(id) => {
+                    lugarElegido.current = true;
+                    setMunicipioPorGps(false);
+                    setForm((f) => ({ ...f, municipioId: id }));
+                  }}
                   errorText={errors.municipio}
                 />
+                {municipioPorGps && <Text style={styles.muted}>Según la ubicación del GPS. Corríjalo si no es el correcto.</Text>}
                 <TextField
                   label="Referencia del lugar (opcional)"
                   placeholder="Ej. Km 12, frente a la bomba"
@@ -754,15 +803,52 @@ function ResumenProblemas({ problemas }: { problemas: Problema[] }) {
   );
 }
 
+/** Cuánto antes de ahora puede indicarse la llegada (un turno). */
+const LLEGADA_MAX_ATRAS_MS = 12 * 60 * 60_000;
+const PASO_LLEGADA_MS = 5 * 60_000;
+
+/**
+ * Ajuste de la hora de llegada en pasos de 5 minutos, sin selector de fecha (no requiere un módulo
+ * nativo). Nunca en el futuro ni antes de un turno atrás.
+ */
+function AjusteLlegada({ valor, onChange }: { valor: string; onChange: (iso: string) => void }) {
+  const actual = new Date(valor).getTime();
+  const mover = (deltaMs: number) => {
+    const ahora = Date.now();
+    const nueva = Math.min(ahora, Math.max(ahora - LLEGADA_MAX_ATRAS_MS, actual + deltaMs));
+    if (nueva !== actual) onChange(new Date(nueva).toISOString());
+  };
+  return (
+    <View style={styles.ajusteLlegada}>
+      <Button label="−5 min" variant="ghost" style={styles.flexFila} onPress={() => mover(-PASO_LLEGADA_MS)} />
+      <Button label="+5 min" variant="ghost" style={styles.flexFila} onPress={() => mover(PASO_LLEGADA_MS)} />
+      <Button label="Ahora" variant="ghost" style={styles.flexFila} onPress={() => mover(Date.now() - actual)} />
+    </View>
+  );
+}
+
 type EstadoGpsProps = {
   capturar: boolean;
   estado: ReturnType<typeof useUbicacionActual>['estado'];
   ubicacion: EventoForm['ubicacion'];
+  /** Al volver a tomarla en un evento guardado: si falla, el evento conserva la que ya tenía. */
+  conservaGuardada?: boolean;
   onReintentar: () => void;
 };
 
 /** Estado de la ubicación en una línea de color: verde lista, ámbar buscando, rojo sin ubicación. */
-function EstadoGps({ capturar, estado, ubicacion, onReintentar }: EstadoGpsProps) {
+function EstadoGps({ capturar, estado, ubicacion, conservaGuardada = false, onReintentar }: EstadoGpsProps) {
+  // Sin la nueva ubicación no se pierde la anterior: se avisa en ámbar, no como si no hubiera ninguna
+  const fallo = estado === 'denegada' ? 'Sin permiso de ubicación' : 'No se pudo obtener la ubicación';
+  if (capturar && conservaGuardada && estado !== 'lista' && estado !== 'buscando') {
+    return (
+      <View style={[styles.gps, { backgroundColor: TONOS.espera.fondo }]} accessibilityLiveRegion="polite">
+        <Icon name="ubicacionNo" color={TONOS.espera.texto} size={22} />
+        <Text style={[styles.gpsTexto, { color: TONOS.espera.texto }]}>{fallo}: se conserva la ubicación registrada</Text>
+        <Button label="Reintentar" variant="ghost" onPress={onReintentar} />
+      </View>
+    );
+  }
   const vista: { tono: 'ok' | 'espera' | 'error'; icono: IconName; texto: string } = !capturar
     ? ubicacion
       ? { tono: 'ok', icono: 'ubicacion', texto: 'Ubicación registrada' }
@@ -826,6 +912,7 @@ const styles = StyleSheet.create({
   },
   gpsTexto: { flex: 1, fontSize: 16, fontWeight: '700' },
   contexto: { fontSize: 14, color: Palette.neutral[700] },
+  ajusteLlegada: { flexDirection: 'row', gap: 8 },
   agentes: { gap: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   involucrado: {

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { EventoFormulario } from '@/features/events/components/evento-formulario';
 import { nuevoEventoForm } from '@/features/events/form/evento-form';
 import { guardarEventoLocal } from '@/features/events/local/eventos-local';
+import { pedirPestanaInicio } from '@/features/events/local/pestana-inicio';
 
 /** Registrar evento: queda guardado en el dispositivo, "en curso", hasta que el agente lo cierre y lo envíe. */
 export default function NewEventScreen() {
@@ -19,11 +20,13 @@ export default function NewEventScreen() {
       titulo="Registrar evento"
       inicial={inicial}
       capturarUbicacion
+      llegadaEditable
       textoGuardar="Guardar evento"
       mensajeGuardado="Evento guardado en «En curso». Ciérrelo y envíelo al terminar."
       onGuardar={async (form, tipos, sesion) => {
         if (!sesion) throw new Error('La sesión no tiene agente o unidad: vuelva a iniciar sesión.');
         await guardarEventoLocal(db, form, sesion, tipos);
+        pedirPestanaInicio('en_curso');
       }}
     />
   );

@@ -192,6 +192,9 @@ export default function LoginScreen() {
                 setCedula(maskCedula(text));
                 setCedulaStatus('idle');
                 setCedulaError(null);
+                // El componente se validó contra esta cédula (debe ser otro agente): se valida de nuevo
+                setComponenteStatus('idle');
+                setComponenteError(null);
               }}
               onSubmitEditing={validateCedula}
               editable={cedulaStatus !== 'checking'}

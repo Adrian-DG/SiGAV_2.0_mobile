@@ -27,10 +27,13 @@ import {
   descartarEventoLocal,
   ESTATUS_LOCAL_LABELS,
   listarEventosLocales,
+  purgarEnviadosAntiguos,
   retirarAsignadosNoVigentes,
   type EstatusLocal,
   type EventoLocalListItem,
 } from '@/features/events/local/eventos-local';
+import { tomarPestanaInicio } from '@/features/events/local/pestana-inicio';
+import { Icon } from '@/components/ui/icon';
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
 import { EstadoEventoValue, type DenominacionActual, type ResumenEventos } from '@/features/events/types';
 import { ApiError, NETWORK_ERROR_STATUS } from '@/lib/api-client';
@@ -48,8 +51,14 @@ const ESTATUS: EstatusLocal[] = ['en_curso', 'por_enviar', 'enviado'];
 const SIN_EVENTOS: Record<EstatusLocal, string> = {
   en_curso: 'No hay eventos en curso. Registre uno con el botón «Nuevo evento».',
   por_enviar: 'No hay eventos cerrados pendientes de enviar.',
-  enviado: 'Aún no ha enviado eventos desde este dispositivo.',
+  enviado: 'No hay eventos enviados en los últimos 7 días desde este dispositivo.',
 };
+
+const esErrorDeRed = (error: unknown) => error instanceof ApiError && error.status === NETWORK_ERROR_STATUS;
+
+const eventos = (n: number) => (n === 1 ? '1 evento' : `${n} eventos`);
+
+type ResultadoLote = { total: number; enviados: number; fallidos: string[] };
 
 type EventsState =
   | { status: 'loading' }
@@ -75,6 +84,7 @@ export default function HomeScreen() {
   // Bumping this re-triggers every load effect below; it's how pull-to-refresh and the
   // "Reintentar" button re-fetch without exposing the fetchers themselves outside the effects.
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [enviandoTodos, setEnviandoTodos] = useState(false);
 
   const token = session?.token;
   const unidadId = session?.agente.unidadId;
@@ -193,6 +203,96 @@ export default function HomeScreen() {
 
   const refetchAll = () => setRefreshNonce((n) => n + 1);
 
+  // Una vez por apertura: los enviados de hace más de 7 días se borran del teléfono
+  useEffect(() => {
+    purgarEnviadosAntiguos(db, new Date())
+      .then((fotos) => fotos.forEach(borrarFoto))
+      .catch(() => {
+        // Se intentará en la próxima apertura
+      });
+  }, [db]);
+
+  // ------------------------------------------------------------------ Envío de los por enviar
+
+  // Un solo lote a la vez (botón "Enviar todos", al recuperar señal o antes de cerrar sesión)
+  const enviandoLote = useRef(false);
+
+  /**
+   * Envía uno por uno los eventos cerrados (con mala señal, varios a la vez compiten por el ancho
+   * de banda). Si falla por falta de red, no se insiste con los demás. Devuelve null si ya hay un
+   * lote en curso.
+   */
+  async function enviarPorEnviar(): Promise<ResultadoLote | null> {
+    if (!token || !sesion || enviandoLote.current) return null;
+    enviandoLote.current = true;
+    setEnviandoTodos(true);
+    try {
+      const porEnviar = await listarEventosLocales(db, sesion, 'por_enviar');
+      const fallidos: string[] = [];
+      let enviados = 0;
+      for (const [i, item] of porEnviar.entries()) {
+        try {
+          await enviarEventoLocal(db, token, sesion, item.localId);
+          enviados++;
+        } catch (error) {
+          fallidos.push(`• ${item.tipos.join(', ') || 'Evento'}: ${describirError(error)}`);
+          if (esErrorDeRed(error)) {
+            const resto = porEnviar.length - i - 1;
+            if (resto > 0) fallidos.push(`• ${resto === 1 ? 'Otro evento' : `Otros ${resto} eventos`}: sin intentar, no hay conexión.`);
+            break;
+          }
+        }
+      }
+      return { total: porEnviar.length, enviados, fallidos };
+    } finally {
+      enviandoLote.current = false;
+      setEnviandoTodos(false);
+      refetchAll();
+    }
+  }
+
+  async function enviarTodos() {
+    const n = conteo?.por_enviar ?? 0;
+    toast.mostrar({ mensaje: `Enviando ${eventos(n)}…`, duracion: 60_000 });
+    const resultado = await enviarPorEnviar();
+    if (!resultado) return;
+    if (resultado.fallidos.length === 0) {
+      toast.mostrar({ mensaje: `${resultado.enviados === 1 ? 'Se envió 1 evento' : `Se enviaron ${resultado.enviados} eventos`} al centro`, icono: 'exito' });
+      return;
+    }
+    toast.mostrar({ mensaje: `Faltan eventos por enviar`, icono: 'error' });
+    Alert.alert(
+      resultado.enviados > 0 ? `Se enviaron ${resultado.enviados} de ${resultado.total}` : 'No se pudo enviar',
+      `Los que faltan siguen guardados en el teléfono.\n\n${resultado.fallidos.join('\n')}`,
+    );
+  }
+
+  // Al recuperar la señal se envían solos los que estaban cerrados (sin preguntar: ya se cerraron)
+  const conexionAnterior = useRef(isConnected);
+  const porEnviarAhora = conteo?.por_enviar ?? 0;
+  useEffect(() => {
+    const recuperada = !conexionAnterior.current && isConnected;
+    conexionAnterior.current = isConnected;
+    if (!recuperada || porEnviarAhora === 0) return;
+    void enviarPorEnviar().then((resultado) => {
+      if (!resultado || resultado.total === 0) return;
+      toast.mostrar(
+        resultado.fallidos.length === 0
+          ? { mensaje: `Señal recuperada: ${resultado.enviados === 1 ? 'se envió 1 evento' : `se enviaron ${resultado.enviados} eventos`}`, icono: 'exito' }
+          : {
+              mensaje: `Señal recuperada, pero ${
+                resultado.total - resultado.enviados === 1
+                  ? '1 evento no se pudo enviar'
+                  : `${resultado.total - resultado.enviados} eventos no se pudieron enviar`
+              }`,
+              icono: 'error',
+            },
+      );
+    });
+    // enviarPorEnviar cambia en cada render; solo importa el cambio de conexión
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]);
+
   /** Acción sobre un evento asignado: si falla se avisa; siempre se refresca la lista. */
   async function operarAsignado(accion: () => Promise<unknown>, titulo: string) {
     try {
@@ -261,24 +361,23 @@ export default function HomeScreen() {
     if (!token || !sesion || cerrandoSesion.current) return;
     cerrandoSesion.current = true;
     try {
-      const porEnviar = await listarEventosLocales(db, sesion, 'por_enviar');
-      toast.mostrar({ mensaje: `Enviando ${porEnviar.length === 1 ? '1 evento' : `${porEnviar.length} eventos`}…`, duracion: 60_000 });
-
-      const fallidos: string[] = [];
-      // Uno por uno: con mala señal, varios a la vez compiten por el ancho de banda
-      for (const item of porEnviar) {
-        try {
-          await enviarEventoLocal(db, token, sesion, item.localId);
-        } catch (error) {
-          fallidos.push(`• ${item.tipos.join(', ') || 'Evento'}: ${describirError(error)}`);
-        }
+      toast.mostrar({ mensaje: `Enviando ${eventos(conteo?.por_enviar ?? 0)}…`, duracion: 60_000 });
+      const resultado = await enviarPorEnviar();
+      if (!resultado) {
+        toast.mostrar({ mensaje: 'Ya se están enviando los eventos. Espere y vuelva a cerrar sesión.' });
+        return;
       }
+      const { fallidos } = resultado;
 
       if (fallidos.length > 0) {
         toast.mostrar({ mensaje: 'No se cerró la sesión: hay eventos sin enviar', icono: 'error' });
         Alert.alert(
           'No se pudo cerrar la sesión',
-          `${fallidos.length === 1 ? '1 evento no se pudo enviar' : `${fallidos.length} eventos no se pudieron enviar`}. ` +
+          `${
+            resultado.total - resultado.enviados === 1
+              ? '1 evento no se pudo enviar'
+              : `${resultado.total - resultado.enviados} eventos no se pudieron enviar`
+          }. ` +
             `Siguen guardados en el teléfono; reintente cuando tenga señal.\n\n${fallidos.join('\n')}`,
         );
         return;
@@ -288,7 +387,6 @@ export default function HomeScreen() {
       await signOut();
     } finally {
       cerrandoSesion.current = false;
-      refetchAll();
     }
   }
 
@@ -340,7 +438,9 @@ export default function HomeScreen() {
   }
 
   async function cerrar(item: EventoLocalListItem, tipoCierreId: number) {
+    const yaCerrado = item.estatus === 'por_enviar';
     await cerrarEventoLocal(db, item.localId, tipoCierreId);
+    if (!yaCerrado) toast.mostrar({ mensaje: 'Evento cerrado: está en «Por enviar»', icono: 'exito', accion: { label: 'Ver', onPress: () => setEstatus('por_enviar') } });
     refetchAll();
   }
 
@@ -348,12 +448,16 @@ export default function HomeScreen() {
     if (!token || !sesion) return;
     try {
       const resultado = await enviarEventoLocal(db, token, sesion, item.localId);
-      Alert.alert(
-        'Evento enviado',
-        resultado.esDuplicado ? `El evento No. ${resultado.id} ya estaba registrado.` : `Quedó registrado como evento No. ${resultado.id}.`,
-      );
+      toast.mostrar({
+        mensaje: resultado.esDuplicado ? `El evento No. ${resultado.id} ya estaba en el centro` : `Enviado como evento No. ${resultado.id}`,
+        icono: 'exito',
+      });
     } catch (error) {
-      Alert.alert('No se pudo enviar', describirError(error));
+      // Sin red basta un aviso breve con "Reintentar" (el motivo queda en la tarjeta); un rechazo
+      // de la API se muestra completo porque dice qué corregir
+      if (esErrorDeRed(error))
+        toast.mostrar({ mensaje: 'Sin conexión: el evento sigue en el teléfono', icono: 'error', accion: { label: 'Reintentar', onPress: () => void enviar(item).catch(() => {}) } });
+      else Alert.alert('No se pudo enviar', describirError(error));
       throw error;
     } finally {
       refetchAll();
@@ -365,6 +469,8 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       // El primer enfoque es la carga inicial (ya la hacen los efectos de arriba)
+      const pestana = tomarPestanaInicio();
+      if (pestana) setEstatus(pestana);
       if (primerEnfoque.current) {
         primerEnfoque.current = false;
         return;
@@ -386,15 +492,20 @@ export default function HomeScreen() {
         title="Inicio"
         right={
           <>
-            <View
-              style={[styles.connectionDot, { backgroundColor: isConnected ? Palette.success[400] : Palette.danger[400] }]}
-              accessibilityLabel={isConnected ? 'Conectado' : 'Sin conexión'}
-            />
             <IconButton icon="recargar" label="Actualizar" onPress={refetchAll} />
             <IconButton icon="salir" label="Cerrar sesión" onPress={pedirCierreSesion} />
           </>
         }
       />
+
+      {!isConnected && (
+        <View style={styles.sinConexion} accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Icon name="sinSenal" color={Palette.white} size={20} />
+          <Text style={styles.sinConexionTexto}>
+            Sin conexión. Puede registrar y cerrar eventos; se envían solos al volver la señal.
+          </Text>
+        </View>
+      )}
 
       <FlatList
         data={listado.status === 'ready' ? listado.items : []}
@@ -413,6 +524,8 @@ export default function HomeScreen() {
                 denominacion={denominacion}
                 resumen={resumen}
                 isLoadingResumen={isLoadingResumen}
+                // Los asignados ya cuentan en el resumen (los creó el centro): solo faltan los propios
+                pendientesLocales={conteo ? Math.max(0, conteo.en_curso + conteo.por_enviar - enDispositivo.length) : 0}
                 onVerEstadisticas={() => router.push('/estadisticas')}
               />
             )}
@@ -450,6 +563,18 @@ export default function HomeScreen() {
               value={estatus}
               onChange={setEstatus}
             />
+            {estatus === 'por_enviar' && (conteo?.por_enviar ?? 0) >= 2 && (
+              <Button
+                label={`Enviar todos (${conteo!.por_enviar})`}
+                icon="enviar"
+                onPress={() => void enviarTodos()}
+                loading={enviandoTodos}
+                disabled={!isConnected}
+              />
+            )}
+            {estatus === 'enviado' && (
+              <Text style={styles.nota}>Se muestran los enviados de los últimos 7 días; los anteriores ya están en el centro.</Text>
+            )}
           </View>
         }
         renderItem={({ item }) => (
@@ -487,12 +612,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Palette.neutral[50],
   },
-  connectionDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderColor: Palette.neutral[300],
-    borderWidth: 1,
+  sinConexion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Palette.neutral[800],
+  },
+  sinConexionTexto: {
+    flex: 1,
+    color: Palette.white,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  nota: {
+    fontSize: 12,
+    color: Palette.neutral[500],
   },
   listContent: {
     padding: 16,

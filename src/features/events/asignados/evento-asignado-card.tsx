@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,8 +37,8 @@ type EventoAsignadoCardProps = {
 };
 
 /**
- * Evento que el call center asignó a la unidad. Llega pendiente: "Llegué" lo pasa a en curso y
- * "Cerrar" lo completa en el servidor (no pasa por la cola del dispositivo). "Editar" lo trae al
+ * Evento que el call center asignó a la unidad. Llega pendiente: "Llegué" lo pasa a en curso;
+ * "Cerrar sin datos" (en «Más opciones») lo completa en el servidor sin pasar por el dispositivo. "Completar" lo trae al
  * dispositivo para completarlo: desde ahí se lista con los eventos propios y se cierra y envía como
  * ellos. Solo la unidad principal cambia su estado o lo edita; una de apoyo solicitada solo avisa
  * que llegó.
@@ -55,6 +55,7 @@ export function EventoAsignadoCard({
   const [cerrarVisible, setCerrarVisible] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const esPrincipal = evento.rol === ROL_PRINCIPAL;
+  const pendiente = evento.estado === EstadoEventoValue.Pendiente;
   const atiende = agentes?.find((a) => a.agenteId === evento.agenteId);
 
   async function ejecutar(accion: () => Promise<void>) {
@@ -70,6 +71,24 @@ export function EventoAsignadoCard({
 
   const comoLlegar = () =>
     void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${evento.latitud},${evento.longitud}`);
+
+  /** Acciones menos frecuentes (Android admite hasta 3 botones en el diálogo). */
+  function masOpciones() {
+    Alert.alert(`Evento No. ${evento.id}`, '¿Qué desea hacer?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Cerrar sin datos', style: 'destructive', onPress: () => setCerrarVisible(true) },
+      ...(pendiente ? [{ text: 'Completar datos', onPress: () => void ejecutar(onEditar) }] : []),
+    ]);
+  }
+
+  /** Cambiar quién atiende se confirma: un toque por error en el chip pasaría el evento al otro agente. */
+  function cambiarAgente(agente: AgenteUnidad) {
+    if (agente.agenteId === evento.agenteId || ocupado) return;
+    Alert.alert('¿Cambiar quién lo atiende?', `El evento No. ${evento.id} quedará a nombre de ${describirAgente(agente)}.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Cambiar', onPress: () => void ejecutar(() => onCambiarAgente(agente.agenteId)) },
+    ]);
+  }
 
   return (
     <Card style={styles.card}>
@@ -113,46 +132,42 @@ export function EventoAsignadoCard({
               key={a.agenteId}
               label={a.nombre || a.identificacion}
               selected={a.agenteId === evento.agenteId}
-              onPress={() => a.agenteId !== evento.agenteId && !ocupado && void ejecutar(() => onCambiarAgente(a.agenteId))}
+              onPress={() => cambiarAgente(a)}
             />
           ))}
         </View>
       )}
 
       <View style={styles.actions}>
-        <Button label="Cómo llegar" variant="ghost" style={styles.actionButton} onPress={comoLlegar} />
-        {esPrincipal && evento.estado === EstadoEventoValue.Pendiente && (
-          <Button label="Llegué" variant="secondary" style={styles.actionButton} loading={ocupado} onPress={() => void ejecutar(onIniciar)} />
+        {/* Una acción principal según el momento: llegar (pendiente) o completarlo (en curso) */}
+        {esPrincipal && pendiente && (
+          <Button label="Llegué" style={styles.principal} loading={ocupado} onPress={() => void ejecutar(onIniciar)} />
         )}
-        {evento.rol === ROL_APOYO_SOLICITADO && (
+        {esPrincipal && !pendiente && (
           <Button
-            label="Llegué"
-            variant="secondary"
-            style={styles.actionButton}
-            loading={ocupado}
-            onPress={() => void ejecutar(onConfirmarLlegadaApoyo)}
-          />
-        )}
-        {esPrincipal && (
-          <Button
-            label="Editar"
+            label="Completar evento"
             icon="editar"
-            variant="outline"
-            style={styles.actionButton}
-            disabled={ocupado}
+            style={styles.principal}
+            loading={ocupado}
             onPress={() => void ejecutar(onEditar)}
           />
         )}
-        {esPrincipal && (
-          <Button label="Cerrar" style={styles.actionButton} disabled={ocupado} onPress={() => setCerrarVisible(true)} />
+        {evento.rol === ROL_APOYO_SOLICITADO && (
+          <Button label="Llegué" style={styles.principal} loading={ocupado} onPress={() => void ejecutar(onConfirmarLlegadaApoyo)} />
         )}
+        <View style={styles.secundarias}>
+          <Button label="Cómo llegar" icon="ubicacion" variant="ghost" style={styles.actionButton} onPress={comoLlegar} />
+          {esPrincipal && (
+            <Button label="Más opciones" variant="ghost" style={styles.actionButton} disabled={ocupado} onPress={masOpciones} />
+          )}
+        </View>
       </View>
 
       <CompletarEventoSheet
         visible={cerrarVisible}
         onClose={() => setCerrarVisible(false)}
         onConfirm={onCompletar}
-        descripcion="Se cierra de inmediato en el centro, sin vehículos ni personas. Para registrarlos, use «Editar» en lugar de cerrar aquí."
+        descripcion="Se cierra de inmediato en el centro, sin vehículos ni personas. Para registrarlos, use «Completar datos» en lugar de cerrar aquí."
         aviso={
           evento.estado === EstadoEventoValue.Pendiente
             ? 'Aún no marcó «Llegué»: el evento quedará cerrado sin hora de llegada. Úselo solo si se resolvió antes de que llegara la unidad.'
@@ -224,17 +239,20 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
     borderTopWidth: 1,
     borderTopColor: Palette.neutral[100],
     padding: 14,
   },
-  // Dos por fila: con "Llegué" y "Editar" no caben cuatro en un teléfono
+  principal: {
+    minHeight: 52,
+  },
+  secundarias: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   actionButton: {
-    flexGrow: 1,
-    flexBasis: '45%',
+    flex: 1,
     minHeight: 48,
   },
 });

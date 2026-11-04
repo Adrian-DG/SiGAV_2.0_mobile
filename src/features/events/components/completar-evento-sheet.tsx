@@ -67,8 +67,9 @@ export function CompletarEventoSheet({
         <SafeAreaView style={styles.sheet} edges={['bottom']}>
           <View style={styles.header}>
             <Text style={styles.title}>Cerrar evento</Text>
+            {/* "Cancelar" y no "Cerrar": en esta hoja "cerrar" es cerrar el evento */}
             <Pressable accessibilityRole="button" onPress={close} hitSlop={12} disabled={isSubmitting}>
-              <Text style={styles.close}>Cerrar</Text>
+              <Text style={styles.close}>Cancelar</Text>
             </Pressable>
           </View>
           <Text style={styles.subtitle}>{descripcion}</Text>

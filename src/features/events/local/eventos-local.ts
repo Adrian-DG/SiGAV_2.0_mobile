@@ -224,8 +224,13 @@ export async function guardarEventoLocal(
       id = result.lastInsertRowId;
     } else {
       const result = await db.runAsync(
+        // En los propios, reporte y llegada son la hora en que el agente encontró el evento (puede
+        // ajustarla); en un asignado el reporte es el del centro y la llegada la registra el servidor
         `UPDATE eventos SET latitud = ?, longitud = ?, provincia_id = ?, municipio_id = ?, direccion = ?, comentario = ?,
-           agente_atiende_id = ?, sync_error = NULL, updated_at = ?
+           agente_atiende_id = ?,
+           fecha_hora_reporte_utc = CASE WHEN server_id IS NULL THEN ? ELSE fecha_hora_reporte_utc END,
+           fecha_hora_llegada_utc = CASE WHEN server_id IS NULL THEN ? ELSE fecha_hora_llegada_utc END,
+           sync_error = NULL, updated_at = ?
          WHERE id = ? AND synced = 0`,
         request.latitud,
         request.longitud,
@@ -234,6 +239,8 @@ export async function guardarEventoLocal(
         request.direccion,
         request.comentario,
         form.agenteAtiendeId,
+        request.fechaHoraReporteUtc,
+        request.fechaHoraLlegadaUtc,
         ahoraIso,
         localId,
       );
@@ -404,6 +411,39 @@ async function borrarEventos(db: LocalDb, ids: number[]): Promise<string[]> {
     await db.runAsync(`DELETE FROM evento_ciudadanos WHERE evento_id IN (${marcadores})`, ...ids);
     await db.runAsync(`DELETE FROM evento_vehiculos WHERE evento_id IN (${marcadores})`, ...ids);
     await db.runAsync(`DELETE FROM eventos WHERE id IN (${marcadores}) AND synced = 0`, ...ids);
+  });
+  return fotos.map((f) => f.foto_uri);
+}
+
+/** Días que un evento enviado se sigue viendo en "Enviados" antes de borrarse del teléfono. */
+export const DIAS_CONSERVAR_ENVIADOS = 7;
+
+/**
+ * Borra del teléfono los eventos ya enviados (de cualquier sesión) que se cerraron hace más de
+ * `dias` días: el centro ya los tiene y así "Enviados" no crece sin límite. Sus fotos se borraron
+ * al enviarlos; se devuelven las que quedaran por si alguna no se pudo borrar entonces.
+ */
+export async function purgarEnviadosAntiguos(db: LocalDb, ahora: Date, dias = DIAS_CONSERVAR_ENVIADOS): Promise<string[]> {
+  const limite = new Date(ahora.getTime() - dias * 24 * 60 * 60 * 1000).toISOString();
+  const viejos = await db.getAllAsync<{ id: number }>(
+    'SELECT id FROM eventos WHERE synced = 1 AND COALESCE(fecha_hora_completado_utc, fecha_hora_reporte_utc) < ?',
+    limite,
+  );
+  if (viejos.length === 0) return [];
+  const ids = viejos.map((v) => v.id);
+  const marcadores = ids.map(() => '?').join(', ');
+  const fotos = await db.getAllAsync<{ foto_uri: string }>(
+    `SELECT foto_uri FROM evento_vehiculos WHERE evento_id IN (${marcadores}) AND foto_uri IS NOT NULL
+     UNION ALL
+     SELECT foto_uri FROM evento_ciudadanos WHERE evento_id IN (${marcadores}) AND foto_uri IS NOT NULL`,
+    ...ids,
+    ...ids,
+  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM evento_tipos WHERE evento_id IN (${marcadores})`, ...ids);
+    await db.runAsync(`DELETE FROM evento_ciudadanos WHERE evento_id IN (${marcadores})`, ...ids);
+    await db.runAsync(`DELETE FROM evento_vehiculos WHERE evento_id IN (${marcadores})`, ...ids);
+    await db.runAsync(`DELETE FROM eventos WHERE id IN (${marcadores}) AND synced = 1`, ...ids);
   });
   return fotos.map((f) => f.foto_uri);
 }

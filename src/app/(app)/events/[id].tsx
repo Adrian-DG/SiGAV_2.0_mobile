@@ -75,6 +75,7 @@ export default function EditEventScreen() {
       titulo="Editar evento"
       inicial={evento.form}
       capturarUbicacion={false}
+      llegadaEditable={evento.serverId == null && evento.tipoCierreId == null}
       textoGuardar="Guardar cambios"
       mensajeGuardado="Cambios guardados"
       aviso={

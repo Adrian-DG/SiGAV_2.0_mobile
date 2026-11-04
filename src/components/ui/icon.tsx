@@ -22,6 +22,8 @@ const ICONOS = {
   quitar: { ios: 'trash', android: 'delete' },
   recargar: { ios: 'arrow.clockwise', android: 'refresh' },
   salir: { ios: 'power', android: 'power_settings_new' },
+  sinSenal: { ios: 'wifi.slash', android: 'wifi_off' },
+  enviar: { ios: 'paperplane.fill', android: 'send' },
   ubicacion: { ios: 'location.fill', android: 'location_on' },
   ubicacionBuscando: { ios: 'location', android: 'location_searching' },
   ubicacionNo: { ios: 'location.slash', android: 'location_off' },

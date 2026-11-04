@@ -165,6 +165,52 @@ export async function provinciaDeMunicipio(db: LocalDb, municipioId: number): Pr
   return fila?.provincia_id ?? null;
 }
 
+/** Lo que devuelve la geocodificación inversa del teléfono (expo-location), solo los campos de lugar. */
+export type LugarGeocodificado = { region: string | null; subregion: string | null; city: string | null; district: string | null };
+
+/** Minúsculas, sin tildes ni prefijos administrativos ("Provincia de", "Municipio"): así se comparan nombres. */
+export function normalizarLugar(nombre: string): string {
+  return nombre
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/^(provincia|municipio|distrito municipal)( de(l)?)?\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Municipio del catálogo que corresponde al lugar geocodificado, o null si no hay uno claro. La
+ * provincia sale de `region`; el municipio, del primero de city/subregion/district que coincida
+ * dentro de esa provincia (o en todo el país, si el nombre es único).
+ */
+export function elegirMunicipio(
+  lugar: LugarGeocodificado,
+  provincias: { id: number; nombre: string }[],
+  municipios: { id: number; nombre: string; provincia_id: number }[],
+): { provinciaId: number; municipioId: number } | null {
+  const provincia = lugar.region
+    ? provincias.find((p) => normalizarLugar(p.nombre) === normalizarLugar(lugar.region!))
+    : undefined;
+  const candidatos = provincia ? municipios.filter((m) => m.provincia_id === provincia.id) : municipios;
+
+  for (const nombre of [lugar.city, lugar.subregion, lugar.district]) {
+    if (!nombre) continue;
+    const coinciden = candidatos.filter((m) => normalizarLugar(m.nombre) === normalizarLugar(nombre));
+    if (coinciden.length === 1) return { provinciaId: coinciden[0].provincia_id, municipioId: coinciden[0].id };
+  }
+  return null;
+}
+
+/** {@link elegirMunicipio} con los catálogos del dispositivo. */
+export async function municipioDeLugar(db: LocalDb, lugar: LugarGeocodificado) {
+  const provincias = await db.getAllAsync<{ id: number; nombre: string }>('SELECT id, nombre FROM cat_provincias');
+  const municipios = await db.getAllAsync<{ id: number; nombre: string; provincia_id: number }>(
+    'SELECT id, nombre, provincia_id FROM cat_municipios',
+  );
+  return elegirMunicipio(lugar, provincias, municipios);
+}
+
 export async function listarPrefijosPlaca(db: LocalDb): Promise<PrefijoPlacaItem[]> {
   const prefijos = await db.getAllAsync<Omit<PrefijoPlacaItem, 'tipoVehiculoIds'>>(
     'SELECT id, prefijo, nombre, patron, ejemplo FROM cat_prefijos_placa ORDER BY id',

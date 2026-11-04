@@ -17,6 +17,8 @@ type UnitSummaryCardProps = {
   denominacion: DenominacionActual | null;
   resumen: ResumenEventos | null;
   isLoadingResumen: boolean;
+  /** Eventos del dispositivo aún sin enviar (en curso o por enviar): no cuentan en el resumen de la API. */
+  pendientesLocales: number;
   /** Solo se ofrece a denominaciones de nivel Supervisor o Encargado. */
   onVerEstadisticas: () => void;
 };
@@ -38,10 +40,14 @@ export function UnitSummaryCard({
   denominacion,
   resumen,
   isLoadingResumen,
+  pendientesLocales,
   onVerEstadisticas,
 }: UnitSummaryCardProps) {
-  const asistencias = resumen?.porCategoria.find((c) => c.categoria === CategoriaEventoValue.Asistencia)?.total ?? 0;
-  const accidentes = resumen?.porCategoria.find((c) => c.categoria === CategoriaEventoValue.Accidente)?.total ?? 0;
+  // Sin resumen (sin conexión o error) no se muestra 0: no se sabe cuántos hay
+  const total = (categoria: number) =>
+    resumen ? (resumen.porCategoria.find((c) => c.categoria === categoria)?.total ?? 0) : '—';
+  const asistencias = total(CategoriaEventoValue.Asistencia);
+  const accidentes = total(CategoriaEventoValue.Accidente);
   const rangoInstitucion = [rango, institucion].filter(Boolean).join(', ');
 
   return (
@@ -85,6 +91,18 @@ export function UnitSummaryCard({
           <View style={styles.statDivider} />
           <StatTile label="Accidentes hoy" value={accidentes} accentColor={Palette.danger[600]} />
         </View>
+      )}
+      {!isLoadingResumen && (!resumen || pendientesLocales > 0) && (
+        <Text style={styles.notaResumen}>
+          {[
+            !resumen ? 'Sin conexión: el resumen del centro no está disponible.' : 'Cuenta lo recibido por el centro.',
+            pendientesLocales > 0
+              ? `${pendientesLocales === 1 ? 'Falta 1 evento' : `Faltan ${pendientesLocales} eventos`} de este teléfono por enviar.`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        </Text>
       )}
 
       {denominacion?.esEncargado && (
@@ -157,5 +175,11 @@ const styles = StyleSheet.create({
   },
   loader: {
     paddingVertical: 10,
+  },
+  notaResumen: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: Palette.neutral[600],
+    textAlign: 'center',
   },
 });

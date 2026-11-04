@@ -41,6 +41,11 @@ export function iniciarEvento(token: string, eventoId: number) {
   });
 }
 
+/** PATCH /api/eventos/{id}/llegada-apoyo — la unidad de apoyo solicitada llegó (el estado del evento no cambia). */
+export function confirmarLlegadaApoyo(token: string, eventoId: number) {
+  return apiRequest<void>(`/eventos/${eventoId}/llegada-apoyo`, { method: 'PATCH', token });
+}
+
 /** PATCH /api/eventos/{id}/agente — cuál de los dos agentes de la unidad lo atiende. */
 export function cambiarAgenteEvento(token: string, eventoId: number, agenteId: number) {
   return apiRequest<void>(`/eventos/${eventoId}/agente`, { method: 'PATCH', token, body: { agenteId } });

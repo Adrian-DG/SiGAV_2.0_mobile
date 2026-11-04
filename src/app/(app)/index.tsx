@@ -32,8 +32,9 @@ import {
   type EventoLocalListItem,
 } from '@/features/events/local/eventos-local';
 import { useSesionEvento } from '@/features/events/local/use-sesion-evento';
-import type { DenominacionActual, ResumenEventos } from '@/features/events/types';
-import { cambiarAgenteEvento, getEventosAsignados, iniciarEvento, type EventoAsignado } from '@/features/events/asignados/api';
+import { EstadoEventoValue, type DenominacionActual, type ResumenEventos } from '@/features/events/types';
+import { ApiError, NETWORK_ERROR_STATUS } from '@/lib/api-client';
+import { cambiarAgenteEvento, confirmarLlegadaApoyo, getEventosAsignados, iniciarEvento, type EventoAsignado } from '@/features/events/asignados/api';
 import { abrirAsignadoEnDispositivo } from '@/features/events/asignados/importar';
 import { EventoAsignadoCard } from '@/features/events/asignados/evento-asignado-card';
 import { useNotificaciones } from '@/features/notificaciones/notificaciones-context';
@@ -291,10 +292,21 @@ export default function HomeScreen() {
     }
   }
 
-  /** Trae el asignado al dispositivo (la primera vez, con conexión) y abre su formulario. */
+  /**
+   * Trae el asignado al dispositivo (la primera vez, con conexión) y abre su formulario. Si aún
+   * estaba pendiente, completarlo es llegar al lugar: se registra la llegada en el servidor antes,
+   * para que el centro lo vea en curso y la hora de llegada sea la real.
+   */
   async function editarAsignado(evento: EventoAsignado) {
     if (!token || !sesion) return;
     try {
+      if (evento.estado === EstadoEventoValue.Pendiente) {
+        await iniciarEvento(token, evento.id).catch((error) => {
+          // Sin red tampoco se puede traer: que lo diga el paso siguiente. Otro rechazo (p. ej. ya
+          // estaba en curso) no impide completarlo; al enviarlo, la API aplica la llegada si falta.
+          if (error instanceof ApiError && error.status === NETWORK_ERROR_STATUS) throw error;
+        });
+      }
       const localId = await abrirAsignadoEnDispositivo(db, token, sesion, evento.id);
       router.push({ pathname: '/events/[id]', params: { id: String(localId) } });
     } catch (error) {
@@ -423,6 +435,9 @@ export default function HomeScreen() {
                     }
                     onCambiarAgente={(id) => operarAsignado(() => cambiarAgenteEvento(token, evento.id, id), 'No se pudo cambiar el agente')}
                     onEditar={() => editarAsignado(evento)}
+                    onConfirmarLlegadaApoyo={() =>
+                      operarAsignado(() => confirmarLlegadaApoyo(token, evento.id), 'No se pudo registrar la llegada')
+                    }
                   />
                 ))}
               </View>

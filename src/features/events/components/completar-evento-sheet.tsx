@@ -12,15 +12,28 @@ type CompletarEventoSheetProps = {
   /** Tipo de cierre ya elegido (para cambiarlo antes de enviar). */
   inicial?: number | null;
   onClose: () => void;
-  /** Guarda el cierre en el dispositivo. Si lanza un error, se muestra y la hoja sigue abierta. */
+  /** Guarda el cierre. Si lanza un error, se muestra y la hoja sigue abierta. */
   onConfirm: (tipoCierreId: number) => Promise<void>;
+  /** Qué pasa al guardar; por defecto, el cierre de un evento del dispositivo. */
+  descripcion?: string;
+  /** Advertencia antes de confirmar (p. ej. cerrar sin haber marcado la llegada). */
+  aviso?: string | null;
 };
+
+const DESCRIPCION = 'Seleccione el tipo de cierre. Se guarda en el dispositivo y luego podrá enviar el evento.';
 
 /**
  * Hoja para elegir el tipo de cierre. El cierre se guarda en el dispositivo: el evento queda
  * "por enviar" y el agente lo envía después. Las opciones salen del catálogo del dispositivo.
  */
-export function CompletarEventoSheet({ visible, inicial = null, onClose, onConfirm }: CompletarEventoSheetProps) {
+export function CompletarEventoSheet({
+  visible,
+  inicial = null,
+  onClose,
+  onConfirm,
+  descripcion = DESCRIPCION,
+  aviso,
+}: CompletarEventoSheetProps) {
   const [tipoCierre, setTipoCierre] = useState<number | null>(inicial);
   // Solo mientras está abierta (cada tarjeta del listado tiene su hoja)
   const opciones = useCatalogo(visible ? 'tipos-cierre' : null, listarTiposCierre);
@@ -58,7 +71,12 @@ export function CompletarEventoSheet({ visible, inicial = null, onClose, onConfi
               <Text style={styles.close}>Cerrar</Text>
             </Pressable>
           </View>
-          <Text style={styles.subtitle}>Seleccione el tipo de cierre. Se guarda en el dispositivo y luego podrá enviar el evento.</Text>
+          <Text style={styles.subtitle}>{descripcion}</Text>
+          {!!aviso && (
+            <Text style={styles.aviso} accessibilityRole="alert">
+              {aviso}
+            </Text>
+          )}
 
           <View style={styles.options}>
             {opciones.cargando && <ActivityIndicator color={Palette.primary[500]} />}
@@ -121,6 +139,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: Palette.neutral[600],
+  },
+  aviso: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    color: Palette.warning[900],
+    backgroundColor: Palette.warning[50],
+    borderRadius: 12,
+    padding: 12,
   },
   options: {
     gap: 8,

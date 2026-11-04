@@ -15,6 +15,7 @@ import { describirAgente, type AgenteUnidad } from '@/lib/jwt';
 import type { EventoAsignado } from './api';
 
 const ROL_PRINCIPAL = 1;
+const ROL_APOYO_SOLICITADO = 3;
 
 function formatFecha(iso: string): string {
   const date = new Date(iso);
@@ -31,15 +32,26 @@ type EventoAsignadoCardProps = {
   onCambiarAgente: (agenteId: number) => Promise<void>;
   /** Lo trae al dispositivo y abre el formulario (agregar vehículos y personas, corregir el lugar...). */
   onEditar: () => Promise<void>;
+  /** Unidad de apoyo solicitada: avisa que llegó al lugar. */
+  onConfirmarLlegadaApoyo: () => Promise<void>;
 };
 
 /**
  * Evento que el call center asignó a la unidad. Llega pendiente: "Llegué" lo pasa a en curso y
  * "Cerrar" lo completa en el servidor (no pasa por la cola del dispositivo). "Editar" lo trae al
  * dispositivo para completarlo: desde ahí se lista con los eventos propios y se cierra y envía como
- * ellos. Solo la unidad principal cambia su estado o lo edita.
+ * ellos. Solo la unidad principal cambia su estado o lo edita; una de apoyo solicitada solo avisa
+ * que llegó.
  */
-export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, onCambiarAgente, onEditar }: EventoAsignadoCardProps) {
+export function EventoAsignadoCard({
+  evento,
+  agentes,
+  onIniciar,
+  onCompletar,
+  onCambiarAgente,
+  onEditar,
+  onConfirmarLlegadaApoyo,
+}: EventoAsignadoCardProps) {
   const [cerrarVisible, setCerrarVisible] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const esPrincipal = evento.rol === ROL_PRINCIPAL;
@@ -85,6 +97,13 @@ export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, on
         {!!evento.comentario && <Text style={styles.comentario}>{evento.comentario}</Text>}
         <Text style={styles.fecha}>Reportado {formatFecha(evento.fechaHoraReporte)}</Text>
         {!!atiende && <Text style={styles.fecha}>Atiende: {describirAgente(atiende)}</Text>}
+        {!esPrincipal && (
+          <Text style={styles.apoyo}>
+            {evento.rol === ROL_APOYO_SOLICITADO
+              ? 'El centro pidió a su unidad que apoye este evento. Marque «Llegué» al estar en el lugar; la unidad principal lo registra y lo cierra.'
+              : 'Su unidad apoya este evento. La unidad principal lo registra y lo cierra.'}
+          </Text>
+        )}
       </View>
 
       {!!agentes && esPrincipal && (
@@ -105,6 +124,15 @@ export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, on
         {esPrincipal && evento.estado === EstadoEventoValue.Pendiente && (
           <Button label="Llegué" variant="secondary" style={styles.actionButton} loading={ocupado} onPress={() => void ejecutar(onIniciar)} />
         )}
+        {evento.rol === ROL_APOYO_SOLICITADO && (
+          <Button
+            label="Llegué"
+            variant="secondary"
+            style={styles.actionButton}
+            loading={ocupado}
+            onPress={() => void ejecutar(onConfirmarLlegadaApoyo)}
+          />
+        )}
         {esPrincipal && (
           <Button
             label="Editar"
@@ -120,7 +148,17 @@ export function EventoAsignadoCard({ evento, agentes, onIniciar, onCompletar, on
         )}
       </View>
 
-      <CompletarEventoSheet visible={cerrarVisible} onClose={() => setCerrarVisible(false)} onConfirm={onCompletar} />
+      <CompletarEventoSheet
+        visible={cerrarVisible}
+        onClose={() => setCerrarVisible(false)}
+        onConfirm={onCompletar}
+        descripcion="Se cierra de inmediato en el centro, sin vehículos ni personas. Para registrarlos, use «Editar» en lugar de cerrar aquí."
+        aviso={
+          evento.estado === EstadoEventoValue.Pendiente
+            ? 'Aún no marcó «Llegué»: el evento quedará cerrado sin hora de llegada. Úselo solo si se resolvió antes de que llegara la unidad.'
+            : null
+        }
+      />
     </Card>
   );
 }
@@ -167,6 +205,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Palette.neutral[700],
     fontStyle: 'italic',
+  },
+  apoyo: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    color: Palette.warning[900],
   },
   fecha: {
     fontSize: 12,

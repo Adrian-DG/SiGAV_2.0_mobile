@@ -119,7 +119,10 @@ export function EventoFormulario({
   const [form, setForm] = useState<EventoForm>(inicial);
   // Contra qué se comparan los cambios para preguntar antes de salir (incluye el municipio precargado)
   const [base, setBase] = useState<EventoForm>(inicial);
-  const gps = useUbicacionActual(capturarUbicacion);
+  // Al editar se conserva la ubicación guardada, salvo que el agente pida tomar la actual (p. ej. un
+  // asignado con las coordenadas aproximadas del call center)
+  const [recapturar, setRecapturar] = useState(false);
+  const gps = useUbicacionActual(capturarUbicacion || recapturar);
   const [editor, setEditor] = useState<Editor>(null);
   const [editorIntento, setEditorIntento] = useState(false);
   // Tras el primer intento de guardar, los errores se muestran y se actualizan al corregir
@@ -163,7 +166,8 @@ export function EventoFormulario({
     ? form.agenteAtiendeId!
     : session.agente.agenteId;
 
-  const ubicacion = capturarUbicacion ? gps.ubicacion : form.ubicacion;
+  // Mientras el GPS responde se conserva la guardada
+  const ubicacion = capturarUbicacion ? gps.ubicacion : recapturar ? (gps.ubicacion ?? form.ubicacion) : form.ubicacion;
   const formCompleto: EventoForm = {
     ...form,
     ubicacion,
@@ -173,7 +177,7 @@ export function EventoFormulario({
 
   // ------------------------------------------------------------------ Salir sin perder datos
 
-  const hayCambios = editor !== null || !iguales(form, base);
+  const hayCambios = editor !== null || recapturar || !iguales(form, base);
   // El agente eligió descartar: al desmontarse no se guarda nada
   const descartado = useRef(false);
 
@@ -504,11 +508,14 @@ export function EventoFormulario({
               {/* 1. Lo que se toma solo: ubicación, unidad, hora de llegada */}
               <Card style={styles.card}>
                 <EstadoGps
-                  capturar={capturarUbicacion}
+                  capturar={capturarUbicacion || recapturar}
                   estado={gps.estado}
                   ubicacion={ubicacion}
                   onReintentar={gps.reintentar}
                 />
+                {!capturarUbicacion && !recapturar && (
+                  <Button label="Usar mi ubicación actual" icon="ubicacion" variant="ghost" onPress={() => setRecapturar(true)} />
+                )}
                 <Text style={styles.contexto}>
                   Unidad {session.agente.ficha} · Llegada{' '}
                   {new Date(form.fechaHoraLlegada).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}

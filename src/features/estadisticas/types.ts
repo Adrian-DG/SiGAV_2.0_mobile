@@ -1,7 +1,7 @@
 /**
  * Mirrors Application/Features/Estadisticas/EstadisticasViewModels.cs (GET /api/estadisticas/eventos).
  * El alcance lo decide la API con la denominación vigente de la unidad de la sesión:
- * Regional → sus regiones, Tramo → sus tramos, Unidad → solo su ficha.
+ * Regional → sus regiones y zonas, Tramo → sus tramos, Unidad → solo su ficha.
  */
 import type { CategoriaEvento, Jerarquia } from '@/features/events/types';
 
@@ -23,7 +23,7 @@ export type Alcance = {
   denominacionId: number | null;
   denominacion: string | null;
   regionesMacro: RegionMacro[];
-  regionesAsistencia: Asignacion[];
+  zonas: Asignacion[];
   tramos: Asignacion[];
 };
 
@@ -49,9 +49,9 @@ export type TramoEstadistica = {
   unidades: UnidadEstadistica[];
 };
 
-export type RegionEstadistica = {
-  regionAsistenciaId: number;
-  region: string;
+export type ZonaEstadistica = {
+  zonaId: number;
+  zona: string;
   regionMacro: RegionMacro;
   resumen: Resumen;
   tramos: TramoEstadistica[];
@@ -63,5 +63,5 @@ export type EstadisticasEventos = {
   desde: string;
   hasta: string;
   resumen: Resumen;
-  regiones: RegionEstadistica[];
+  zonas: ZonaEstadistica[];
 };

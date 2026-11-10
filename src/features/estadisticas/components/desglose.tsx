@@ -5,9 +5,9 @@ import { Card } from '@/components/ui/card';
 import { Palette } from '@/constants/colors';
 
 import { detalleCategorias, type Desglose } from '../resumen';
-import { REGION_MACRO_LABELS, type RegionEstadistica, type TramoEstadistica } from '../types';
+import { REGION_MACRO_LABELS, type ZonaEstadistica, type TramoEstadistica } from '../types';
 
-/** Regiones → tramos → unidades (supervisor regional) o tramos → unidades (encargado de tramo). */
+/** Zonas → tramos → unidades (supervisor regional) o tramos → unidades (encargado de tramo). */
 export function DesgloseEstadisticas({ desglose }: { desglose: Desglose }) {
   if (desglose.tipo === 'ninguno') return null;
 
@@ -23,26 +23,26 @@ export function DesgloseEstadisticas({ desglose }: { desglose: Desglose }) {
 
   return (
     <>
-      {desglose.regiones.map((r) => (
-        <TarjetaRegion key={r.regionAsistenciaId} region={r} />
+      {desglose.zonas.map((z) => (
+        <TarjetaZona key={z.zonaId} zona={z} />
       ))}
     </>
   );
 }
 
-function TarjetaRegion({ region }: { region: RegionEstadistica }) {
+function TarjetaZona({ zona }: { zona: ZonaEstadistica }) {
   return (
     <Card style={styles.card}>
       <View style={styles.cabecera}>
         <View style={styles.flex}>
-          <Text style={styles.titulo}>{region.region || 'Región sin nombre'}</Text>
+          <Text style={styles.titulo}>{zona.zona || 'Zona sin nombre'}</Text>
           <Text style={styles.secundario}>
-            Región {REGION_MACRO_LABELS[region.regionMacro] ?? ''} · {detalleCategorias(region.resumen)}
+            Región {REGION_MACRO_LABELS[zona.regionMacro] ?? ''} · {detalleCategorias(zona.resumen)}
           </Text>
         </View>
-        <Total valor={region.resumen.totalEventos} />
+        <Total valor={zona.resumen.totalEventos} />
       </View>
-      {region.tramos.map((t) => (
+      {zona.tramos.map((t) => (
         <FilaTramo key={t.tramoId} tramo={t} />
       ))}
     </Card>

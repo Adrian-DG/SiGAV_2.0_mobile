@@ -32,7 +32,7 @@ const fechaLarga = (dia: string) =>
 
 /**
  * Estadísticas de eventos atendidos. Lo que se ve depende del nivel de la denominación de la
- * unidad conectada (lo decide la API): supervisor regional → sus regiones, encargado de tramo →
+ * unidad conectada (lo decide la API): supervisor regional → sus regiones y zonas, encargado de tramo →
  * sus tramos, unidad → solo su ficha. En la app solo se consulta el día operativo de hoy.
  * Requiere conexión.
  */

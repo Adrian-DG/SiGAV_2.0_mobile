@@ -23,9 +23,9 @@ export function describirAlcance(alcance: Alcance): string {
     case JerarquiaValue.Regional: {
       const partes = [
         ...alcance.regionesMacro.map((m) => `Región ${REGION_MACRO_LABELS[m] ?? m}`),
-        ...alcance.regionesAsistencia.map((r) => r.nombre),
+        ...alcance.zonas.map((z) => z.nombre),
       ];
-      return partes.length ? `Regiones: ${partes.join(', ')}` : 'La denominación no tiene regiones asignadas.';
+      return partes.length ? `Regiones y zonas: ${partes.join(', ')}` : 'La denominación no tiene regiones ni zonas asignadas.';
     }
     case JerarquiaValue.Tramo:
       return alcance.tramos.length
@@ -39,23 +39,23 @@ export function describirAlcance(alcance: Alcance): string {
 }
 
 export type Desglose =
-  | { tipo: 'regiones'; regiones: EstadisticasEventos['regiones'] }
+  | { tipo: 'zonas'; zonas: EstadisticasEventos['zonas'] }
   | { tipo: 'tramos'; tramos: TramoEstadistica[] }
   | { tipo: 'ninguno' };
 
 /**
- * Hasta dónde se desglosa según el nivel: un supervisor regional ve regiones → tramos → unidades;
- * un encargado de tramo, tramos → unidades (la región no le aporta); una unidad, solo su resumen.
+ * Hasta dónde se desglosa según el nivel: un supervisor regional ve zonas → tramos → unidades;
+ * un encargado de tramo, tramos → unidades (la zona no le aporta); una unidad, solo su resumen.
  */
 export function desglosePorNivel(datos: EstadisticasEventos): Desglose {
-  if (datos.alcance.jerarquia === JerarquiaValue.Unidad || datos.regiones.length === 0) return { tipo: 'ninguno' };
+  if (datos.alcance.jerarquia === JerarquiaValue.Unidad || datos.zonas.length === 0) return { tipo: 'ninguno' };
   if (datos.alcance.jerarquia === JerarquiaValue.Tramo) {
-    const tramos = datos.regiones
+    const tramos = datos.zonas
       .flatMap((r) => r.tramos)
       .sort((a, b) => b.resumen.totalEventos - a.resumen.totalEventos || a.tramo.localeCompare(b.tramo));
     return { tipo: 'tramos', tramos };
   }
-  return { tipo: 'regiones', regiones: datos.regiones };
+  return { tipo: 'zonas', zonas: datos.zonas };
 }
 
 /** "3 asistencias · 1 accidente" (omite los ceros). */

@@ -1,7 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
+import { ActivityIndicator, Alert, AppState, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
@@ -19,7 +20,7 @@ import { agentesDeLaUnidad, describirAgente } from '@/lib/jwt';
 import { EventCard } from '@/features/events/components/event-card';
 import { PendientesOtrasSesiones } from '@/features/events/components/pendientes-otras-sesiones';
 import { UnitSummaryCard } from '@/features/events/components/unit-summary-card';
-import { describirError, enviarEventoLocal } from '@/features/events/local/enviar-evento';
+import { cerradoYaNoSeEnvia, describirError, enviarEventoLocal } from '@/features/events/local/enviar-evento';
 import {
   asignadosEnDispositivo,
   cerrarEventoLocal,
@@ -55,6 +56,9 @@ const SIN_EVENTOS: Record<EstatusLocal, string> = {
 };
 
 const esErrorDeRed = (error: unknown) => error instanceof ApiError && error.status === NETWORK_ERROR_STATUS;
+
+/** Regla de negocio: los eventos cerrados que no se pudieron enviar se reintentan cada 10 minutos. */
+const INTERVALO_REINTENTO_ENVIO_MS = 10 * 60 * 1000;
 
 const eventos = (n: number) => (n === 1 ? '1 evento' : `${n} eventos`);
 
@@ -181,8 +185,11 @@ export default function HomeScreen() {
         if (cancelled) return;
         setAsignados(items);
         if (!agenteId || !unidadId) return;
-        // Los que ya se trajeron al teléfono y el centro anuló, completó o reasignó: ya no se pueden enviar
-        const retirados = await retirarAsignadosNoVigentes(db, { agenteId, unidadId }, items.map((i) => i.id));
+        // Los que ya se trajeron al teléfono y el centro anuló, completó o reasignó: ya no se pueden enviar.
+        // Los cerrados aquí solo se quitan si el servidor lo confirma (pueden tener fotos por subir).
+        const retirados = await retirarAsignadosNoVigentes(db, { agenteId, unidadId }, items.map((i) => i.id), (serverId, requestId) =>
+          cerradoYaNoSeEnvia(token, unidadId, serverId, requestId),
+        );
         if (retirados.serverIds.length === 0) return;
         retirados.fotos.forEach(borrarFoto);
         const numeros = retirados.serverIds.map((id) => `No. ${id}`).join(', ');
@@ -292,6 +299,38 @@ export default function HomeScreen() {
     // enviarPorEnviar cambia en cada render; solo importa el cambio de conexión
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
+
+  // Reintento automático de los por enviar: al abrir la pantalla, al volver la app al frente y cada
+  // 10 minutos (también cubre los que fallaron con la API caída, no solo sin señal)
+  const reintentarEnvio = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    reintentarEnvio.current = async () => {
+      if (!sesion) return;
+      const red = await NetInfo.fetch();
+      if (red.isConnected === false || red.isInternetReachable === false) return;
+      const pendientes = await contarEventosLocales(db, sesion);
+      if (pendientes.por_enviar === 0) return;
+      const resultado = await enviarPorEnviar();
+      if (!resultado || resultado.enviados === 0) return;
+      toast.mostrar({
+        mensaje: resultado.enviados === 1 ? 'Se envió 1 evento pendiente' : `Se enviaron ${resultado.enviados} eventos pendientes`,
+        icono: 'exito',
+      });
+    };
+  });
+  useEffect(() => {
+    if (!token || !agenteId || !unidadId) return;
+    const reintentar = () => void reintentarEnvio.current().catch(() => {});
+    reintentar();
+    const intervalo = setInterval(reintentar, INTERVALO_REINTENTO_ENVIO_MS);
+    const suscripcion = AppState.addEventListener('change', (estado) => {
+      if (estado === 'active') reintentar();
+    });
+    return () => {
+      clearInterval(intervalo);
+      suscripcion.remove();
+    };
+  }, [token, agenteId, unidadId]);
 
   /** Acción sobre un evento asignado: si falla se avisa; siempre se refresca la lista. */
   async function operarAsignado(accion: () => Promise<unknown>, titulo: string) {

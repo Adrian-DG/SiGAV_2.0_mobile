@@ -9,7 +9,7 @@
  *
  * Un evento que asignó el call center vive en el servidor hasta que el agente lo edita: entonces se
  * trae aquí (server_id = su número) y sigue el mismo ciclo; al enviarlo va con PUT /api/eventos/{id}.
- * Los que registra el agente solo tienen server_id una vez enviados.
+ * Los que registra el agente reciben server_id cuando la API los crea (aunque falten fotos por subir).
  *
  * Solo depende de la interfaz mínima de la base (no de React ni de expo-sqlite), para poder
  * probarlo con cualquier SQLite.
@@ -354,6 +354,15 @@ export async function marcarEnviado(db: LocalDb, localId: number, serverId: numb
   await db.runAsync('UPDATE eventos SET synced = 1, server_id = ?, sync_error = NULL WHERE id = ?', serverId, localId);
 }
 
+/**
+ * Guarda el número que dio la API apenas se crea el evento, antes de subir las fotos: si estas
+ * fallan, el reintento va por PUT (idempotente por requestId) y el evento ya no se puede descartar
+ * como si el centro no lo tuviera.
+ */
+export async function asignarServerId(db: LocalDb, localId: number, serverId: number) {
+  await db.runAsync('UPDATE eventos SET server_id = ? WHERE id = ? AND synced = 0 AND server_id IS NULL', serverId, localId);
+}
+
 export async function registrarErrorEnvio(db: LocalDb, localId: number, mensaje: string) {
   await db.runAsync('UPDATE eventos SET sync_error = ? WHERE id = ? AND synced = 0', mensaje, localId);
 }
@@ -378,18 +387,28 @@ export async function descartarEventoLocal(db: LocalDb, localId: number, sesion:
  * Quita del dispositivo los asignados sin enviar que el centro ya no tiene abiertos para la unidad
  * (anulados, completados o reasignados): enviarlos fallaría siempre y bloquearían el cierre de sesión.
  * `vigentes`: números de los asignados que devolvió la API. Devuelve los números retirados y sus fotos.
+ *
+ * Que falte en la lista no basta para borrar uno ya cerrado aquí ("por enviar"): puede ser que el
+ * servidor ya lo completó con este envío y falten fotos (o que el envío esté en curso), o que sea uno
+ * propio con server_id cuyas fotos no subieron. Para esos decide `cerradoYaNoSeEnvia`, que consulta
+ * al servidor; ante la duda se conservan.
  */
 export async function retirarAsignadosNoVigentes(
   db: LocalDb,
   sesion: SesionEvento,
   vigentes: number[],
+  cerradoYaNoSeEnvia: (serverId: number, requestId: string) => Promise<boolean>,
 ): Promise<{ serverIds: number[]; fotos: string[] }> {
-  const filas = await db.getAllAsync<{ id: number; server_id: number }>(
-    'SELECT id, server_id FROM eventos WHERE agente_id = ? AND unidad_id = ? AND server_id IS NOT NULL AND synced = 0',
+  const filas = await db.getAllAsync<{ id: number; server_id: number; request_id: string; estado: number }>(
+    'SELECT id, server_id, request_id, estado FROM eventos WHERE agente_id = ? AND unidad_id = ? AND server_id IS NOT NULL AND synced = 0',
     sesion.agenteId,
     sesion.unidadId,
   );
-  const retirar = filas.filter((f) => !vigentes.includes(f.server_id));
+  const retirar: typeof filas = [];
+  for (const f of filas) {
+    if (vigentes.includes(f.server_id)) continue;
+    if (f.estado !== EstadoEventoValue.Completado || (await cerradoYaNoSeEnvia(f.server_id, f.request_id))) retirar.push(f);
+  }
   if (retirar.length === 0) return { serverIds: [], fotos: [] };
   const fotos = await borrarEventos(db, retirar.map((f) => f.id));
   return { serverIds: retirar.map((f) => f.server_id), fotos };

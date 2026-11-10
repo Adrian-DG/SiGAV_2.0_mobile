@@ -137,7 +137,11 @@ export type RegistrarEventoResult = {
  */
 export type EventoDetalle = {
   id: number;
+  /** El del último envío que aceptó la API (POST o PUT); null si lo creó el centro y nadie lo ha enviado. */
+  requestId: string | null;
   estado: EstadoEvento;
+  /** false: el centro lo anuló. */
+  isActive: boolean;
   latitud: number;
   longitud: number;
   direccion: string | null;

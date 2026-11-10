@@ -1,9 +1,10 @@
 import { borrarFoto, fotoExiste, type FotoEvidencia } from '@/features/scan/fotos';
 import { ApiError, NETWORK_ERROR_STATUS } from '@/lib/api-client';
 
-import { actualizarEvento, registrarEvento, subirEvidencia } from '../api';
-import { TipoEvidenciaValue, type RegistrarEventoResult, type TipoEvidencia } from '../types';
+import { actualizarEvento, getEventoDetalle, registrarEvento, subirEvidencia } from '../api';
+import { EstadoEventoValue, TipoEvidenciaValue, type RegistrarEventoResult, type TipoEvidencia } from '../types';
 import {
+  asignarServerId,
   marcarEnviado,
   obtenerEventoLocal,
   registrarErrorEnvio,
@@ -23,12 +24,24 @@ type FotoPorSubir = { foto: FotoEvidencia; tipo: TipoEvidencia; ciudadanoId?: nu
  * así que no se duplican. El evento queda "enviado" solo cuando subieron todas sus fotos; si algo
  * falla, el motivo queda guardado en el evento para mostrarlo en el listado.
  */
-export async function enviarEventoLocal(
+export function enviarEventoLocal(
   db: LocalDb,
   token: string,
   sesion: SesionEvento,
   localId: number,
 ): Promise<RegistrarEventoResult> {
+  // Un mismo evento no se envía dos veces a la vez (botón y lote o reintento automático): quien
+  // llega tarde espera el envío en curso, así no se borran fotos que el otro está subiendo
+  const enCurso = enviosEnCurso.get(localId);
+  if (enCurso) return enCurso;
+  const envio = enviar(db, token, sesion, localId).finally(() => enviosEnCurso.delete(localId));
+  enviosEnCurso.set(localId, envio);
+  return envio;
+}
+
+const enviosEnCurso = new Map<number, Promise<RegistrarEventoResult>>();
+
+async function enviar(db: LocalDb, token: string, sesion: SesionEvento, localId: number): Promise<RegistrarEventoResult> {
   const evento = await obtenerEventoLocal(db, localId, sesion);
   if (!evento) throw new Error('El evento no existe en este dispositivo.');
   if (evento.estatus === 'enviado') return { id: evento.serverId!, esDuplicado: true };
@@ -36,8 +49,12 @@ export async function enviarEventoLocal(
   const request = toRequestDeEnvio(evento);
 
   try {
-    const resultado =
-      evento.serverId != null ? await actualizarEvento(token, evento.serverId, request) : await registrarEvento(token, request);
+    let resultado: RegistrarEventoResult;
+    if (evento.serverId != null) resultado = await actualizarEvento(token, evento.serverId, request);
+    else {
+      resultado = await registrarEvento(token, request);
+      await asignarServerId(db, localId, resultado.id);
+    }
     const fotos = fotosPorSubir(evento, resultado);
     await subirFotos(token, resultado.id, fotos);
     await marcarEnviado(db, localId, resultado.id);
@@ -87,6 +104,26 @@ async function subirFotos(token: string, eventoId: number, fotos: FotoPorSubir[]
         { cause: error },
       );
     }
+  }
+}
+
+/** Rol de la unidad principal en EventoDetalle.unidades. */
+const ROL_PRINCIPAL = 1;
+
+/**
+ * Para un evento cerrado en el teléfono que ya no sale entre los asignados: true solo si el servidor
+ * confirma que este envío ya no sirve (lo anuló el centro, lo completó otro o pasó a otra unidad).
+ * Si lo completó este mismo envío (mismo requestId) o no se pudo consultar, se conserva.
+ */
+export async function cerradoYaNoSeEnvia(token: string, unidadId: number, serverId: number, requestId: string): Promise<boolean> {
+  try {
+    const evento = await getEventoDetalle(token, serverId);
+    if (!evento.isActive) return true;
+    if (evento.estado === EstadoEventoValue.Completado) return evento.requestId?.toLowerCase() !== requestId.toLowerCase();
+    return !evento.unidades.some((u) => u.unidadId === unidadId && u.rol === ROL_PRINCIPAL);
+  } catch (error) {
+    // 404: la unidad ya no participa en el evento
+    return error instanceof ApiError && error.status === 404;
   }
 }
 

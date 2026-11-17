@@ -3,7 +3,7 @@
  */
 import { CategoriaEventoValue, JerarquiaValue, type CategoriaEvento } from '@/features/events/types';
 
-import { REGION_MACRO_LABELS, type Alcance, type EstadisticasEventos, type Resumen, type TramoEstadistica } from './types';
+import { REGION_MACRO_LABELS, type Alcance, type EstadisticasEventos, type Resumen, type Tiempos, type TramoEstadistica } from './types';
 
 export const totalCategoria = (resumen: Resumen, categoria: CategoriaEvento) =>
   resumen.porCategoria.find((c) => c.categoria === categoria)?.total ?? 0;
@@ -66,4 +66,37 @@ export function detalleCategorias(resumen: Resumen): string {
     accidentes ? `${accidentes} ${accidentes === 1 ? 'accidente' : 'accidentes'}` : null,
   ].filter(Boolean);
   return partes.join(' · ') || 'Sin tipo registrado';
+}
+
+/** "12 min", "1 h 05 min"; "—" sin dato. */
+export function formatoMinutos(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined) return '—';
+  const total = Math.round(valor);
+  if (total < 60) return `${total} min`;
+  return `${Math.floor(total / 60)} h ${String(total % 60).padStart(2, '0')} min`;
+}
+
+export const formatoPorcentaje = (valor: number | null | undefined) =>
+  valor === null || valor === undefined ? '—' : `${Math.round(valor)}%`;
+
+export type TonoCumplimiento = 'bueno' | 'regular' | 'malo' | 'sinDato';
+
+/** Bueno desde 90 %, regular desde 75 %, malo debajo. */
+export function tonoCumplimiento(valor: number | null | undefined): TonoCumplimiento {
+  if (valor === null || valor === undefined) return 'sinDato';
+  if (valor >= 90) return 'bueno';
+  if (valor >= 75) return 'regular';
+  return 'malo';
+}
+
+/** Hay algo que mostrar de tiempos (alguna llegada, atención o pendiente evaluado). */
+export const hayTiempos = (t: Tiempos | undefined): t is Tiempos =>
+  !!t && (t.llegadasMedidas > 0 || t.atencionesMedidas > 0 || t.pendientesVencidos > 0);
+
+/** "Llegada 12 min · 80% en meta" para las filas del desglose; null si no hay llegadas evaluadas. */
+export function detalleTiempos(resumen: Resumen): string | null {
+  const t = resumen.tiempos;
+  if (!t || t.cumplimientoPorcentaje === null) return null;
+  const llegada = t.llegadaMedianaMinutos === null ? null : `Llegada ${formatoMinutos(t.llegadaMedianaMinutos)}`;
+  return [llegada, `${formatoPorcentaje(t.cumplimientoPorcentaje)} en meta`].filter(Boolean).join(' · ');
 }

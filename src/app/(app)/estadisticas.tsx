@@ -14,10 +14,12 @@ import { useSession } from '@/contexts/auth-context';
 import { getEstadisticasEventos } from '@/features/estadisticas/api';
 import { BarrasPorTipo } from '@/features/estadisticas/components/barras-por-tipo';
 import { DesgloseEstadisticas } from '@/features/estadisticas/components/desglose';
+import { TiemposRespuesta } from '@/features/estadisticas/components/tiempos-respuesta';
 import {
   asistenciasYAccidentes,
   describirAlcance,
   desglosePorNivel,
+  hayTiempos,
   tiposDeCategoria,
 } from '@/features/estadisticas/resumen';
 import type { EstadisticasEventos } from '@/features/estadisticas/types';
@@ -128,6 +130,7 @@ function Contenido({ datos }: { datos: EstadisticasEventos }) {
         </Card>
       ) : (
         <>
+          {hayTiempos(datos.resumen.tiempos) && <TiemposRespuesta tiempos={datos.resumen.tiempos} metas={datos.metas} />}
           <Card style={styles.card}>
             <Text style={styles.seccion}>Por tipo de evento</Text>
             <BarrasPorTipo titulo="Asistencias" tipos={tiposAsistencia} color={Palette.primary[600]} />

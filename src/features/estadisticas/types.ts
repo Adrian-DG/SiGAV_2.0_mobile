@@ -32,7 +32,31 @@ export type Resumen = {
   totalEventos: number;
   porCategoria: { categoria: CategoriaEvento; total: number }[];
   porTipo: { tipoEventoId: number; tipoEvento: string; categoria: CategoriaEvento; total: number }[];
+  /** Opcional: una API anterior a los tiempos de respuesta no lo envía. */
+  tiempos?: Tiempos;
 };
+
+/**
+ * Tiempos de respuesta en minutos (null: sin eventos medibles). Llegada = reporte → llegada, solo
+ * eventos despachados (no los que reporta el agente ya en el lugar); atención = llegada → completado.
+ * Cumplimiento = llegadas dentro de la meta / (medidas + pendientes que ya superaron la meta).
+ */
+export type Tiempos = {
+  llegadasMedidas: number;
+  llegadaPromedioMinutos: number | null;
+  llegadaMedianaMinutos: number | null;
+  llegadaP90Minutos: number | null;
+  atencionesMedidas: number;
+  atencionPromedioMinutos: number | null;
+  atencionMedianaMinutos: number | null;
+  dentroDeMeta: number;
+  fueraDeMeta: number;
+  pendientesVencidos: number;
+  cumplimientoPorcentaje: number | null;
+};
+
+/** Meta de llegada por categoría (minutos desde el reporte). */
+export type MetasLlegada = { accidenteMinutos: number; asistenciaMinutos: number };
 
 export type UnidadEstadistica = {
   unidadId: number;
@@ -64,4 +88,5 @@ export type EstadisticasEventos = {
   hasta: string;
   resumen: Resumen;
   zonas: ZonaEstadistica[];
+  metas?: MetasLlegada;
 };

@@ -4,8 +4,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/card';
 import { Palette } from '@/constants/colors';
 
-import { detalleCategorias, type Desglose } from '../resumen';
-import { REGION_MACRO_LABELS, type ZonaEstadistica, type TramoEstadistica } from '../types';
+import { detalleCategorias, detalleTiempos, type Desglose } from '../resumen';
+import { REGION_MACRO_LABELS, type Resumen, type ZonaEstadistica, type TramoEstadistica } from '../types';
+
+/** Llegada mediana y cumplimiento de la meta, si hay llegadas evaluadas. */
+function LineaTiempos({ resumen }: { resumen: Resumen }) {
+  const texto = detalleTiempos(resumen);
+  return texto ? <Text style={styles.tiempos}>{texto}</Text> : null;
+}
 
 /** Zonas → tramos → unidades (supervisor regional) o tramos → unidades (encargado de tramo). */
 export function DesgloseEstadisticas({ desglose }: { desglose: Desglose }) {
@@ -39,6 +45,7 @@ function TarjetaZona({ zona }: { zona: ZonaEstadistica }) {
           <Text style={styles.secundario}>
             Región {REGION_MACRO_LABELS[zona.regionMacro] ?? ''} · {detalleCategorias(zona.resumen)}
           </Text>
+          <LineaTiempos resumen={zona.resumen} />
         </View>
         <Total valor={zona.resumen.totalEventos} />
       </View>
@@ -64,6 +71,7 @@ function FilaTramo({ tramo }: { tramo: TramoEstadistica }) {
         <View style={styles.flex}>
           <Text style={styles.nombre}>{tramo.tramo || 'Tramo sin nombre'}</Text>
           <Text style={styles.secundario}>{detalleCategorias(tramo.resumen)}</Text>
+          <LineaTiempos resumen={tramo.resumen} />
         </View>
         <Total valor={tramo.resumen.totalEventos} />
         <Text style={styles.chevron}>{abierto ? '▴' : '▾'}</Text>
@@ -81,6 +89,7 @@ function FilaTramo({ tramo }: { tramo: TramoEstadistica }) {
                 {u.denominacion}
               </Text>
               <Text style={styles.secundario}>{detalleCategorias(u.resumen)}</Text>
+              <LineaTiempos resumen={u.resumen} />
             </View>
             <Text style={styles.totalUnidad}>{u.resumen.totalEventos}</Text>
           </View>
@@ -105,6 +114,7 @@ const styles = StyleSheet.create({
   titulo: { fontSize: 15, fontWeight: '800', color: Palette.neutral[900] },
   nombre: { fontSize: 14, fontWeight: '700', color: Palette.neutral[900] },
   secundario: { fontSize: 12, color: Palette.neutral[600] },
+  tiempos: { fontSize: 12, fontWeight: '600', color: Palette.primary[700] },
   chevron: { fontSize: 14, color: Palette.neutral[500], width: 14, textAlign: 'center' },
   tramo: {
     gap: 8,
